@@ -11,7 +11,7 @@ import { enqueue, flushQueue, type QueuedPush, type SendResult } from '../servic
 import { diffNotifications, mergeNotifications, pushTargets, type Notif } from '../lib/notifications'
 import { DEFAULT_REMINDER_TIME, buildReminders, dueNow, reminderText, validTime } from '../lib/reminders'
 import { t } from '../i18n'
-import { finalizeTimers, startRunning, timerLogId } from '../lib/timers'
+import { finalizeTimers, finishEarly, startRunning, timerLogId } from '../lib/timers'
 import { triggerDependents, unlinkMissing } from '../lib/deps'
 import { undoCompletion } from '../lib/history'
 import type { GoogleConfig, GoogleUser } from '../services/googleDriveService'
@@ -112,6 +112,8 @@ interface Ctx {
   startTimer: (taskId: string, memberId: string) => number | null
   /** Annulla un'azione in corso senza completarla. */
   cancelTimer: (taskId: string) => void
+  /** «Completa ora»: finisce subito un'azione in corso. Ritorna le stelle assegnate. */
+  finishTimer: (taskId: string) => number
   upsertMember: (m: Omit<Member, 'id' | 'updatedAt'> & { id?: string }) => string
   deleteMember: (id: string) => void
   updateSettings: (s: Partial<Settings> & { houseName?: string }) => void
@@ -482,6 +484,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return started.runningUntil ?? null
   }
 
+  const finishTimer: Ctx['finishTimer'] = (taskId) => {
+    const task = dbRef.current.tasks.find((x) => x.id === taskId)
+    if (!task?.runningUntil) return 0
+    const prev = dbRef.current
+    cancelServerTimer(taskId, task.runningUntil) // la notifica la mandiamo subito noi: quella programmata non deve arrivare dopo
+    mutate((d) => finishEarly(d, taskId))
+    const next = dbRef.current
+    if (metaRef.current.mode === 'demo') notify(t('Il task «{task}» è finito', { task: task.name }))
+    else onRemoteRef.current(prev, next)
+    return task.stars
+  }
+
   const cancelTimerFn: Ctx['cancelTimer'] = (taskId) => {
     const until = dbRef.current.tasks.find((x) => x.id === taskId)?.runningUntil
     if (!until) return
@@ -660,7 +674,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, config, setConfig, theme, setTheme, meId, me, setMeId, toast, notify,
     persistent, prefs, setPrefs, notifications, unread, markRead, markAllRead, clearNotifications, toastNotif, dismissToastNotif, centerOpen, setCenterOpen,
     enableNotifications, disableNotifications, sendTestPush,
-    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, deleteLog, startTimer, cancelTimer: cancelTimerFn, upsertMember, deleteMember, updateSettings,
+    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, deleteLog, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
     demoSkipped, setDemoSkipped, offlineSkipped, setOfflineSkipped,
     syncNow, connect, reconnect, createHouse, joinHouse, shareWith, disconnect, resetDemo,
   }

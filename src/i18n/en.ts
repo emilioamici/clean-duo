@@ -312,6 +312,7 @@ export const EN: Record<string, string> = {
   "In corso · finisce alle {time} ({left})": "Running · done at {time} ({left})",
   "Annullare «{task}»? Non verrà completata.": "Cancel “{task}”? It will not be completed.",
   "Annulla {name}": "Cancel {name}",
+  "Completa ora {name}": "Complete {name} now",
   "Avvia {name}": "Start {name}",
   "Durata": "Duration",
   "Azione con durata": "Task with a duration",

@@ -36,29 +36,41 @@ export function startRunning(task: Task, memberId: string, now = Date.now()): Ta
   return { ...task, runningUntil: now + min * 60_000, runningBy: memberId, updatedAt: now }
 }
 
+function applyFinish(db: AppDatabase, items: Array<{ task: Task; end: number; early?: boolean }>, now: number): AppDatabase {
+  const logs = [...db.logs]
+  const ids = new Set(items.map((i) => i.task.id))
+  const endOf = new Map(items.map((i) => [i.task.id, i]))
+  let tasks = db.tasks.map((x) => {
+    const it = endOf.get(x.id)
+    if (!it) return x
+    const by = x.runningBy && db.members.some((m) => m.id === x.runningBy) ? x.runningBy : db.members[0]?.id
+    // lo stesso id anche se si finisce prima: la notifica del server (se arrivasse) ha lo stesso tag e non si duplica
+    const id = timerLogId(x.id, x.runningUntil!)
+    if (by && !logs.some((l) => l.id === id)) {
+      logs.unshift({ id, taskId: x.id, taskName: x.name, roomId: x.roomId, memberId: by, stars: x.stars, at: it.end, timer: true, ...(it.early ? { early: true } : {}), prev: x.lastCompletedAt, prevTrigger: x.triggeredAt ?? null })
+    }
+    return {
+      ...x, lastCompletedAt: Math.max(x.lastCompletedAt ?? 0, it.end), completions: x.completions + 1,
+      archived: x.recurrence.type === 'once' && !x.afterTaskId, triggeredAt: x.afterTaskId ? null : x.triggeredAt,
+      runningUntil: null, runningBy: undefined, updatedAt: now,
+    }
+  })
+  // chi dipende da un'azione a tempo diventa «da fare» quando il tempo è finito (o quando la si completa prima)
+  for (const x of db.tasks) if (ids.has(x.id)) tasks = triggerDependents(tasks, x.id, endOf.get(x.id)!.end, now)
+  return { ...db, tasks, logs: logs.slice(0, 2000) }
+}
+
 /**
  * Completa le azioni il cui tempo è scaduto: segna l'ora di fine come completamento, assegna le stelle a chi l'ha avviata
  * e toglie lo stato «in corso». Ritorna lo stesso oggetto se non c'è nulla da fare (idempotente tra dispositivi).
  */
 export function finalizeTimers(db: AppDatabase, now = Date.now()): AppDatabase {
   const due = db.tasks.filter((x) => x.runningUntil && x.runningUntil <= now)
-  if (due.length === 0) return db
-  const logs = [...db.logs]
-  let tasks = db.tasks.map((x) => {
-    if (!x.runningUntil || x.runningUntil > now) return x
-    const until = x.runningUntil
-    const by = x.runningBy && db.members.some((m) => m.id === x.runningBy) ? x.runningBy : db.members[0]?.id
-    const id = timerLogId(x.id, until)
-    if (by && !logs.some((l) => l.id === id)) {
-      logs.unshift({ id, taskId: x.id, taskName: x.name, roomId: x.roomId, memberId: by, stars: x.stars, at: until, timer: true, prev: x.lastCompletedAt, prevTrigger: x.triggeredAt ?? null })
-    }
-    return {
-      ...x, lastCompletedAt: Math.max(x.lastCompletedAt ?? 0, until), completions: x.completions + 1,
-      archived: x.recurrence.type === 'once' && !x.afterTaskId, triggeredAt: x.afterTaskId ? null : x.triggeredAt,
-      runningUntil: null, runningBy: undefined, updatedAt: now,
-    }
-  })
-  // chi dipende da un'azione a tempo diventa «da fare» quando il tempo è finito
-  for (const x of due) tasks = triggerDependents(tasks, x.id, x.runningUntil!, now)
-  return { ...db, tasks, logs: logs.slice(0, 2000) }
+  return due.length === 0 ? db : applyFinish(db, due.map((x) => ({ task: x, end: x.runningUntil! })), now)
+}
+
+/** «Completa ora»: finisce subito un'azione in corso, senza aspettare la fine della durata. */
+export function finishEarly(db: AppDatabase, taskId: string, now = Date.now()): AppDatabase {
+  const x = db.tasks.find((y) => y.id === taskId)
+  return x?.runningUntil ? applyFinish(db, [{ task: x, end: now, early: true }], now) : db
 }
