@@ -1,8 +1,9 @@
 import { AnimatePresence, motion, useDragControls } from 'framer-motion'
-import { Star, X } from 'lucide-react'
+import { ChevronDown, Star, X } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import type { Member } from '../types'
 import { cleanColor } from '../lib/clean'
+import { t } from '../i18n'
 
 export function Avatar({ member, size = 32 }: { member?: Member | null; size?: number }) {
   return (
@@ -22,7 +23,7 @@ export function Stars({ value, size = 14, onChange }: { value: number; size?: nu
         const on = n <= value
         const star = <Star size={size} className={on ? 'fill-brand text-brand' : 'text-line'} strokeWidth={2} />
         return onChange
-          ? <button key={n} type="button" onClick={() => onChange(n as 1 | 2 | 3 | 4 | 5)} className="p-1 transition active:scale-75" aria-label={`${n} stelle`}>{star}</button>
+          ? <button key={n} type="button" onClick={() => onChange(n as 1 | 2 | 3 | 4 | 5)} className="p-1 transition active:scale-75" aria-label={t('{n} stelle', { n })}>{star}</button>
           : <span key={n}>{star}</span>
       })}
     </span>
@@ -96,12 +97,45 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
             <div className="flex cursor-grab touch-none justify-center pb-1 pt-3" onPointerDown={(e) => controls.start(e)}><div className="h-1.5 w-10 rounded-full bg-muted/50" /></div>
             <div className="flex items-center justify-between px-5 pb-1">
               <h2 className="text-xl font-bold">{title}</h2>
-              <button onClick={onClose} className="glass-btn !p-2" aria-label="Chiudi"><X size={18} /></button>
+              <button onClick={onClose} className="glass-btn !p-2" aria-label={t('Chiudi')}><X size={18} /></button>
             </div>
             <div className="overflow-y-auto px-5 pb-8 pt-1 pb-safe">{children}</div>
           </motion.div>
         </div>
       )}
     </AnimatePresence>
+  )
+}
+
+export function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className="flex w-full items-center justify-between gap-3 py-1 text-left">
+      <span>
+        <span className="block text-sm font-medium">{label}</span>
+        {hint && <span className="block text-xs text-muted">{hint}</span>}
+      </span>
+      <span className={`relative h-6 w-11 shrink-0 rounded-full transition ${checked ? 'bg-brand' : 'bg-line'}`}>
+        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-all ${checked ? 'left-[22px]' : 'left-0.5'}`} />
+      </span>
+    </button>
+  )
+}
+
+/** Scheda a scomparsa: da chiusa mostra titolo e riepilogo, aperta anche il dettaglio. */
+export function Accordion({ title, summary, icon, open, onToggle, children }: {
+  title: string; summary?: ReactNode; icon: ReactNode; open: boolean; onToggle: () => void; children: ReactNode
+}) {
+  return (
+    <section className="card overflow-hidden" data-open={open || undefined}>
+      <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center gap-3 p-4 text-left active:bg-line/30">
+        <span className="text-brand">{icon}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-bold">{title}</span>
+          {summary && !open && <span className="block truncate text-xs text-muted">{summary}</span>}
+        </span>
+        <ChevronDown size={20} className={`shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && <div className="border-t border-line/60 p-4">{children}</div>}
+    </section>
   )
 }

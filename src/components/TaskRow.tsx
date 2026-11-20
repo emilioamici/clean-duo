@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { Check, Repeat } from 'lucide-react'
 import type { Task } from '../types'
 import { currentAssignee, dueLabel, recurrenceLabel, urgencyOf, type Urgency } from '../lib/clean'
+import { t } from '../i18n'
 import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
 import { RoomIcon } from './icons'
@@ -28,7 +29,7 @@ export function TaskRow({ task, showRoom = true }: { task: Task; showRoom?: bool
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, x: 90, scale: 0.92, transition: { duration: 0.28 } }}
       transition={{ type: 'spring', stiffness: 400, damping: 34 }}
-      className="glass flex items-center gap-3 p-3"
+      className="card flex items-center gap-3 p-3"
     >
       <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => openTaskSheet({ id: task.id })}>
         {showRoom && room && (
@@ -57,7 +58,7 @@ export function TaskRow({ task, showRoom = true }: { task: Task; showRoom?: bool
           complete(task.id, { x: r.left + r.width / 2, y: r.top + r.height / 2 })
         }}
         className="glass-btn btn-primary !h-12 !w-12 shrink-0 !p-0"
-        aria-label={`Completa ${task.name}`}
+        aria-label={t('Completa {name}', { name: task.name })}
       >
         <Check size={24} strokeWidth={3} />
       </motion.button>

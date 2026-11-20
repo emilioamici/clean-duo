@@ -4,6 +4,8 @@
  */
 import type { AppDatabase } from '../types'
 import { parseDb } from '../lib/merge'
+import { t } from '../i18n'
+import { SessionExpired, brokerAvailable, hasSession, logoutBroker, refreshAccessToken, startBrokerLogin } from './broker'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
@@ -26,10 +28,10 @@ export interface DriveMeta { id: string; name: string; version: string; modified
 export interface DrivePermission { id: string; emailAddress?: string; displayName?: string; role: string }
 export interface GoogleUser { email: string; name: string }
 
-export class AuthError extends Error { constructor(m = 'Sessione Google scaduta. Riconnettiti.') { super(m); this.name = 'AuthError' } }
-export class NotFoundError extends Error { constructor(m = 'File non trovato o non accessibile.') { super(m); this.name = 'NotFoundError' } }
-export class ConflictError extends Error { constructor() { super('Conflitto di versione'); this.name = 'ConflictError' } }
-export class NetworkError extends Error { constructor() { super('Nessuna connessione'); this.name = 'NetworkError' } }
+export class AuthError extends Error { constructor(m = t('Sessione Google scaduta. Riconnettiti.')) { super(m); this.name = 'AuthError' } }
+export class NotFoundError extends Error { constructor(m = t('File non trovato o non accessibile.')) { super(m); this.name = 'NotFoundError' } }
+export class ConflictError extends Error { constructor() { super('Version conflict'); this.name = 'ConflictError' } }
+export class NetworkError extends Error { constructor() { super(t('Nessuna connessione')); this.name = 'NetworkError' } }
 
 /* ---------- caricamento script ---------- */
 const scripts = new Map<string, Promise<void>>()
@@ -48,16 +50,27 @@ function loadScript(src: string): Promise<void> {
   return p
 }
 
-/* ---------- autenticazione (GIS token model) ---------- */
-let accessToken: string | null = null
-let tokenExpiry = 0
+/* ---------- autenticazione ---------- */
+// Con il server di accesso (Worker) la sessione è persistente: i token si rinnovano da soli.
+// Senza server si usa Google Identity Services (token di 1 ora, con popup).
+const TOKEN_KEY = 'cleanduo:token'
+interface Tok { value: string; exp: number }
+let tok: Tok | null = null
+try { const raw = sessionStorage.getItem(TOKEN_KEY); if (raw) tok = JSON.parse(raw) as Tok } catch { /* storage non disponibile */ }
 let tokenClient: any = null
 let tokenClientId = ''
 let pending: { resolve: (t: string) => void; reject: (e: Error) => void } | null = null
 
-export function hasValidToken(): boolean {
-  return !!accessToken && Date.now() < tokenExpiry - 30_000
+export function setToken(value: string, expiresInSec: number): void {
+  tok = { value, exp: Date.now() + expiresInSec * 1000 }
+  try { sessionStorage.setItem(TOKEN_KEY, JSON.stringify(tok)) } catch { /* noop */ }
 }
+function clearToken(): void { tok = null; try { sessionStorage.removeItem(TOKEN_KEY) } catch { /* noop */ } }
+
+export function hasValidToken(): boolean { return !!tok && Date.now() < tok.exp - 30_000 }
+export const currentToken = (): string | null => (hasValidToken() ? tok!.value : null)
+/** Millisecondi di validità residua del token (0 se assente o scaduto). */
+export const tokenRemainingMs = (): number => (tok ? Math.max(0, tok.exp - Date.now()) : 0)
 
 async function getTokenClient(clientId: string) {
   await loadScript('https://accounts.google.com/gsi/client')
@@ -68,12 +81,11 @@ async function getTokenClient(clientId: string) {
       scope: SCOPE,
       callback: (resp: any) => {
         if (resp.error) { pending?.reject(new AuthError(resp.error_description || resp.error)); pending = null; return }
-        accessToken = resp.access_token
-        tokenExpiry = Date.now() + (Number(resp.expires_in) || 3600) * 1000
+        setToken(resp.access_token, Number(resp.expires_in) || 3600)
         pending?.resolve(resp.access_token); pending = null
       },
       error_callback: (err: any) => {
-        pending?.reject(new AuthError(err?.type === 'popup_closed' ? 'Accesso annullato.' : err?.message || 'Accesso non riuscito.'))
+        pending?.reject(new AuthError(err?.type === 'popup_closed' ? t('Accesso annullato.') : err?.message || t('Accesso non riuscito.')))
         pending = null
       },
     })
@@ -81,10 +93,36 @@ async function getTokenClient(clientId: string) {
   return tokenClient
 }
 
-/** interactive=true mostra il popup di consenso; false tenta il rinnovo silenzioso. */
+let renewing: Promise<boolean> | null = null
+/** Rinnova il token con la sessione persistente (nessun popup). true se ora c'è un token valido. */
+export function renewWithSession(): Promise<boolean> {
+  if (!hasSession()) return Promise.resolve(false)
+  renewing ??= (async () => {
+    try {
+      const r = await refreshAccessToken()
+      if (!r) return false
+      setToken(r.token, r.expiresIn)
+      return true
+    } catch (e) {
+      if (e instanceof SessionExpired) throw new AuthError()
+      return hasValidToken() // server irraggiungibile: se il token vale ancora si prosegue
+    } finally { renewing = null }
+  })()
+  return renewing
+}
+
+/**
+ * interactive=true: apre l'accesso di Google (con il server: pagina intera che torna qui; senza: popup).
+ * interactive=false: solo rinnovo silenzioso (sessione persistente, o GIS senza consenso).
+ */
 export async function signIn(clientId: string, interactive: boolean): Promise<string> {
-  if (!clientId) throw new AuthError('Inserisci prima il Google Client ID nelle impostazioni.')
-  if (hasValidToken() && tokenClientId === clientId) return accessToken!
+  if (hasValidToken()) return tok!.value
+  if (await renewWithSession() && hasValidToken()) return tok!.value
+  if (interactive && (await brokerAvailable())) {
+    startBrokerLogin(typeof localStorage !== 'undefined' ? localStorage.getItem('cleanduo:email') : null)
+    return new Promise<string>(() => { /* la pagina sta per cambiare */ })
+  }
+  if (!clientId) throw new AuthError(t('Inserisci prima il Google Client ID nelle impostazioni.'))
   const client = await getTokenClient(clientId)
   return new Promise<string>((resolve, reject) => {
     pending = { resolve, reject }
@@ -93,28 +131,32 @@ export async function signIn(clientId: string, interactive: boolean): Promise<st
 }
 
 export function signOut() {
-  if (accessToken && window.google?.accounts?.oauth2) window.google.accounts.oauth2.revoke(accessToken, () => {})
-  accessToken = null; tokenExpiry = 0
+  void logoutBroker()
+  if (tok && window.google?.accounts?.oauth2) window.google.accounts.oauth2.revoke(tok.value, () => {})
+  clearToken()
 }
 
 /* ---------- fetch con gestione errori ---------- */
 async function api(path: string, init: RequestInit = {}, base = API): Promise<Response> {
-  if (!hasValidToken()) throw new AuthError()
+  if (!hasValidToken()) {
+    const ok = await renewWithSession() // AuthError se la sessione persistente non vale più
+    if (!ok || !hasValidToken()) throw hasSession() ? new NetworkError() : new AuthError() // sessione valida ma server irraggiungibile: offline
+  }
   let res: Response
   try {
-    res = await fetch(base + path, { ...init, headers: { ...(init.headers || {}), Authorization: `Bearer ${accessToken}` } })
+    res = await fetch(base + path, { ...init, headers: { ...(init.headers || {}), Authorization: `Bearer ${tok!.value}` } })
   } catch {
     throw new NetworkError()
   }
-  if (res.status === 401) { accessToken = null; throw new AuthError() }
+  if (res.status === 401) { clearToken(); throw new AuthError() }
   if (res.status === 404) throw new NotFoundError()
   if (res.status === 403) {
     const body = await res.json().catch(() => null)
     const reason = body?.error?.errors?.[0]?.reason
     if (reason === 'rateLimitExceeded' || reason === 'userRateLimitExceeded') throw new NetworkError()
-    throw new NotFoundError('Accesso negato: apri il file con "Unisciti a una casa" (Picker) per autorizzare l’app.')
+    throw new NotFoundError(t('Accesso negato: apri il file con «Unisciti a una casa» (Picker) per autorizzare l’app.'))
   }
-  if (!res.ok) throw new Error(`Errore Google Drive (${res.status})`)
+  if (!res.ok) throw new Error(t('Errore Google Drive ({status})', { status: res.status }))
   return res
 }
 
@@ -196,6 +238,7 @@ export function pickerAvailable(cfg: GoogleConfig): boolean {
 /** Apre il Picker e restituisce l'ID del file scelto (concede all'app l'accesso drive.file a quel file). */
 export async function pickDbFile(cfg: GoogleConfig): Promise<string | null> {
   if (!hasValidToken()) throw new AuthError()
+  const accessToken = tok!.value
   await loadScript('https://apis.google.com/js/api.js')
   await new Promise<void>((resolve) => window.gapi.load('picker', () => resolve()))
   const g = window.google.picker
@@ -208,7 +251,7 @@ export async function pickDbFile(cfg: GoogleConfig): Promise<string | null> {
       .setOAuthToken(accessToken)
       .setDeveloperKey(cfg.apiKey)
       .setAppId(cfg.appId)
-      .setTitle(`Scegli ${DB_FILE_NAME}`)
+      .setTitle(t('Scegli {name}', { name: DB_FILE_NAME }))
       .setCallback((data: any) => {
         if (data.action === g.Action.PICKED) resolve(data.docs?.[0]?.id ?? null)
         else if (data.action === g.Action.CANCEL) resolve(null)

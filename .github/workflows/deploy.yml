@@ -34,6 +34,9 @@ jobs:
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
           VITE_GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
           VITE_GOOGLE_APP_ID: ${{ vars.VITE_GOOGLE_APP_ID }}
+          # Server delle notifiche e dell'accesso persistente (Cloudflare Worker, vedi worker/README.md)
+          VITE_PUSH_URL: ${{ vars.VITE_PUSH_URL }}
+          VITE_VAPID_PUBLIC_KEY: ${{ vars.VITE_VAPID_PUBLIC_KEY }}
 
       # SPA: stesso index.html come 404 per i refresh su percorsi profondi
       - run: cp dist/index.html dist/404.html

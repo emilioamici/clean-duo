@@ -19,8 +19,12 @@ export interface Member {
   color: string
   avatar: string
   email?: string
+  /** Quali notifiche vuole ricevere dagli altri (predefinito: tutte) */
+  notify?: NotifyPrefs
   updatedAt: number
 }
+
+export interface NotifyPrefs { done: boolean; task: boolean; member: boolean }
 
 export interface Room {
   id: string
@@ -38,6 +42,8 @@ export interface Task {
   recurrence: Recurrence
   assignment: Assignment
   createdAt: number
+  /** Chi ha creato l'azione (per le notifiche agli altri) */
+  createdBy?: string
   lastCompletedAt: number | null
   /** Quante volte è stata completata (usato per la rotazione) */
   completions: number

@@ -1,3 +1,4 @@
+import { t } from '../i18n'
 import type { ActivityLog, AppDatabase, Task } from '../types'
 
 const DEDUPE_WINDOW = 2 * 60_000
@@ -78,7 +79,7 @@ export function sameContent(a: AppDatabase, b: AppDatabase): boolean {
 export function parseDb(raw: unknown): AppDatabase {
   const d = raw as Partial<AppDatabase> | null
   if (!d || typeof d !== 'object' || !Array.isArray(d.members) || !Array.isArray(d.rooms) || !Array.isArray(d.tasks)) {
-    throw new Error('Il file non è un database Clean Duo valido.')
+    throw new Error(t('Il file non è un database Clean Duo valido.'))
   }
   return {
     schema: 1,
