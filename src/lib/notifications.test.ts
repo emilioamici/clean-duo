@@ -338,13 +338,13 @@ describe('azioni in più stanze', () => {
     expect(roomCleanliness(room('r2'), only.tasks, at)).toBeGreaterThan(roomCleanliness(room('r1'), only.tasks, at))
   })
 
-  it('una tantum: si archivia solo quando tutte le stanze sono fatte', async () => {
+  it('su richiesta: non si archivia mai, nemmeno con tutte le stanze fatte', async () => {
     const { applyCompletion } = await import('./rooms')
     const { task } = multi()
     const once = { ...task, recurrence: { type: 'once' as const, every: 1 } }
     const a = applyCompletion(once, ['r1'], Date.now())
     expect(a.archived).toBe(false)
-    expect(applyCompletion(a, ['r2', 'r3'], Date.now() + 1000).archived).toBe(true)
+    expect(applyCompletion(a, ['r2', 'r3'], Date.now() + 1000).archived).toBe(false)
   })
 
   it('annullare un completamento di una stanza ripristina lo stato per stanza', async () => {
@@ -417,5 +417,20 @@ describe('azioni con scadenza e flag «avvisa»', () => {
     expect(out[0].body).toContain('uno')
     expect(out[0].body).not.toContain('senza')
     expect(buildTodoNotices(d, 'm1', day + 86_400_000)).toEqual([]) // passato
+  })
+})
+
+describe('azioni su richiesta', () => {
+  it('restano visibili dopo il completamento e si possono rifare; quelle già archiviate tornano attive', async () => {
+    const { applyCompletion } = await import('./rooms')
+    const { parseDb } = await import('./merge')
+    const db = createDemoDb()
+    const once = { ...db.tasks[0], recurrence: { type: 'once' as const, every: 1 }, lastCompletedAt: null, completions: 0 }
+    const a = applyCompletion(once, [], Date.now())
+    expect(a.archived).toBe(false)
+    expect(applyCompletion(a, [], Date.now() + 5000).completions).toBe(2)
+    const old = parseDb({ ...db, tasks: [{ ...once, archived: true }, { ...db.tasks[1], archived: true }] })
+    expect(old.tasks[0].archived).toBe(false)
+    expect(old.tasks[1].archived).toBe(true) // le altre non si toccano
   })
 })

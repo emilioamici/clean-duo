@@ -1,5 +1,5 @@
 import { t } from '../i18n'
-import { isEventDriven, unlinkMissing } from './deps'
+import { reviveOnDemand, unlinkMissing } from './deps'
 import { taskRooms } from './rooms'
 import { unlinkMissingAutomations } from './automations'
 import type { ActivityLog, AppDatabase, Task } from '../types'
@@ -59,7 +59,7 @@ function reconcileWithLogs(tasks: Task[], logs: ActivityLog[]): Task[] {
     }
     const m = last.get(x.id) ?? 0
     if (m > (out.lastCompletedAt ?? 0)) {
-      out = { ...out, lastCompletedAt: m, completions: out.completions + 1, archived: out.archived || (out.recurrence.type === 'once' && !isEventDriven(out)) }
+      out = { ...out, lastCompletedAt: m, completions: out.completions + 1, archived: out.archived }
     }
     return out
   })
@@ -98,7 +98,7 @@ export function mergeDb(local: AppDatabase, remote: AppDatabase): AppDatabase {
     settingsUpdatedAt: base.settingsUpdatedAt,
     members: mergeList(local.members, remote.members, tombstones),
     rooms: mergeList(local.rooms, remote.rooms, tombstones),
-    tasks: unlinkMissingAutomations(unlinkMissing(reconcileWithLogs(mergeList(local.tasks, remote.tasks, tombstones, combineTask), logs)), automations),
+    tasks: unlinkMissingAutomations(unlinkMissing(reconcileWithLogs(mergeList(local.tasks, remote.tasks, tombstones, combineTask), logs)), automations).map(reviveOnDemand),
     automations,
     logs,
     tombstones,
@@ -123,7 +123,7 @@ export function parseDb(raw: unknown): AppDatabase {
     houseName: d.houseName ?? 'La mia casa',
     members: d.members,
     rooms: d.rooms,
-    tasks: d.tasks,
+    tasks: d.tasks.map(reviveOnDemand),
     automations: d.automations ?? [],
     logs: d.logs ?? [],
     settings: d.settings ?? { weeklyGoal: 10, prize: '', prizeEmoji: '🏆' },
