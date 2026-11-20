@@ -11,7 +11,7 @@ VAPID_SUBJECT = "https://<utente>.github.io/clean-duo/"
 
 # Tuya (facoltativo, vedi worker/README.md → «Dispositivi Tuya»). Le chiavi NON vanno qui: `npx wrangler secret put TUYA_ACCESS_ID` e `TUYA_ACCESS_SECRET`.
 # TUYA_ENDPOINT = "https://openapi.tuyaeu.com"   # data center del progetto: tuyaeu (Europa), tuyaus (America), tuyain (India), tuyacn (Cina)
-# TUYA_POLL_MINUTES = "10"                         # ogni quanti minuti controllare i dispositivi (multiplo di 5)
+# TUYA_POLL_MINUTES = "60"                         # ogni quanti minuti controllare i dispositivi (multiplo di 5; predefinito 60 = ogni ora)
 
 # Accesso persistente (facoltativo): ID del client OAuth di Google Cloud (identificativo pubblico).
 # Il client secret e SESSION_KEY NON vanno qui: si impostano con `npx wrangler secret put` (vedi worker/README.md).

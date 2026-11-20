@@ -150,7 +150,7 @@ function AutomationForm({ id, onClose }: { id?: string; onClose: () => void }) {
         <p className="mt-2 text-xs text-muted">{t('L’azione resta in attesa finché il dispositivo non segnala; quando la completi torna in attesa del prossimo segnale.')}</p>
       </div>
 
-      <div className="mt-3"><Toggle checked={enabled} onChange={setEnabled} label={t('Automazione attiva')} hint={t('Il server controlla il dispositivo ogni pochi minuti, anche con l’app chiusa.')} /></div>
+      <div className="mt-3"><Toggle checked={enabled} onChange={setEnabled} label={t('Automazione attiva')} hint={t('Il server controlla il dispositivo a intervalli regolari (di norma ogni ora), anche con l’app chiusa.')} /></div>
 
       <button type="button" className="glass-btn btn-primary mt-4 w-full !py-3.5" disabled={busy || !valid || !server} onClick={() => void save()}>
         {busy ? <Loader2 size={18} className="animate-spin" /> : null}{existing ? t('Salva modifiche') : t('Collega dispositivo')}

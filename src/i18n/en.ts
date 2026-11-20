@@ -345,7 +345,7 @@ export const EN: Record<string, string> = {
   "Azione": "Task",
   "L’azione resta in attesa finché il dispositivo non segnala; quando la completi torna in attesa del prossimo segnale.": "The task waits until the device signals; when you complete it, it goes back to waiting for the next signal.",
   "Automazione attiva": "Automation on",
-  "Il server controlla il dispositivo ogni pochi minuti, anche con l’app chiusa.": "The server checks the device every few minutes, even with the app closed.",
+  "Il server controlla il dispositivo a intervalli regolari (di norma ogni ora), anche con l’app chiusa.": "The server checks the device at regular intervals (normally every hour), even with the app closed.",
   "Collega dispositivo": "Connect device",
   "Elimina automazione": "Delete automation",
   "Modifica automazione": "Edit automation",

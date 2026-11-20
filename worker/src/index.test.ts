@@ -188,13 +188,17 @@ describe('Tuya', () => {
     expect(tuyaCalls).toHaveLength(0)
   })
 
-  it('il cron controlla una volta ogni TUYA_POLL_MINUTES', async () => {
+  it('il cron controlla una volta ogni ora (predefinito) o ogni TUYA_POLL_MINUTES', async () => {
     const { runTuya } = await import('./index')
     const { env } = setup()
     faultValue = 2
     await call(env, '/tuya/rule', rule)
     const at = (min: number) => min * 60_000
-    expect((await runTuya(env, at(35))).fired).toBe(0) // minuto 35 con intervallo 10: salta
-    expect((await runTuya(env, at(40))).fired).toBe(1) // minuto 40: controlla
+    expect((await runTuya(env, at(35))).fired).toBe(0) // minuto 35: salta
+    expect((await runTuya(env, at(40))).fired).toBe(0) // anche il minuto 40: l'intervallo predefinito è un'ora
+    expect((await runTuya(env, at(120))).fired).toBe(1) // allo scoccare dell'ora controlla
+    ;(env as unknown as Record<string, string>).TUYA_POLL_MINUTES = '10'
+    await call(env, '/tuya/rule', { ...rule, ruleId: 'auto-9' })
+    expect((await runTuya(env, at(130))).fired).toBe(1) // con intervallo 10 controlla al minuto 130
   })
 })

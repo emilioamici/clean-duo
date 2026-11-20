@@ -72,7 +72,7 @@ Poi rilancia il deploy (*Actions → Deploy su GitHub Pages → Run workflow*). 
 ## Dispositivi Tuya (facoltativo)
 Il Worker può controllare un dispositivo Tuya (per esempio un distributore di crocchette): quando segnala qualcosa, un'azione di Clean Duo va **da sola tra le cose da fare** e tutta la casa riceve una notifica.
 
-**Come funziona.** Il Worker interroga le API cloud di Tuya con le chiavi del tuo progetto (una chiamata ogni 10 minuti per dispositivo) e segnala solo quando la condizione **passa** da «non soddisfatta» a «soddisfatta» (poi si riarma quando torna normale). Il segnale viene messo in coda e **l'app lo applica al database** alla prima apertura o appena arriva la notifica. Il Worker non legge né scrive il database su Drive.
+**Come funziona.** Il Worker interroga le API cloud di Tuya con le chiavi del tuo progetto (una chiamata all'ora per dispositivo) e segnala solo quando la condizione **passa** da «non soddisfatta» a «soddisfatta» (poi si riarma quando torna normale). Il segnale viene messo in coda e **l'app lo applica al database** alla prima apertura o appena arriva la notifica. Il Worker non legge né scrive il database su Drive.
 
 **1. Tuya IoT Platform** (<https://iot.tuya.com>)
 1. *Cloud → Development →* il tuo progetto (es. «pet feeder») → *Overview*: copia **Access ID / Client ID** e **Access Secret / Client Secret**, e annota il **Data Center** (Europa centrale → `https://openapi.tuyaeu.com`; America → `tuyaus`; India → `tuyain`; Cina → `tuyacn`).
@@ -93,8 +93,8 @@ In `wrangler.toml` togli il `#` davanti a `TUYA_ENDPOINT` e inserisci il tuo dat
 4. Scegli l'azione: una nuova («Riempire il distributore», in una stanza) o una esistente. L'azione resta **in attesa** finché il dispositivo non segnala; quando la completi torna in attesa del prossimo segnale.
 
 **Limiti e note**
-- Ritardo: fino a ~10 minuti (intervallo di controllo + cron). Il dispositivo può inoltre aggiornare i dati su Tuya solo quando si sincronizza.
-- Le chiamate alle API Tuya hanno quote (il piano gratuito di prova è limitato): con un dispositivo e un controllo ogni 10 minuti sono circa 4.300 chiamate al mese (più il token, in cache). Aumenta `TUYA_POLL_MINUTES` per ridurle.
+- Ritardo: fino a circa un'ora (intervallo di controllo predefinito). Il dispositivo può inoltre aggiornare i dati su Tuya solo quando si sincronizza. Per un controllo più frequente imposta `TUYA_POLL_MINUTES` (multiplo di 5, minimo 5).
+- Le chiamate alle API Tuya hanno quote (il piano gratuito di prova è limitato): con un dispositivo e un controllo all'ora sono circa 720 chiamate al mese (più il token, in cache). Abbassare `TUYA_POLL_MINUTES` le aumenta in proporzione (ogni 10 minuti ≈ 4.300).
 - Se la condizione è **già soddisfatta** quando colleghi il dispositivo, il segnale parte al primo controllo.
 - Con l'app chiusa la notifica arriva subito (push), l'azione compare tra le cose da fare alla prima apertura.
 - Errori comuni: `1004`/«sign invalid» = Access ID/Secret o data center sbagliati; `1106` = dispositivo non collegato al progetto o servizio API non sottoscritto.

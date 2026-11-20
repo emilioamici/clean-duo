@@ -35,7 +35,7 @@ export interface Env {
   TUYA_ACCESS_SECRET?: string
   /** data center, es. https://openapi.tuyaeu.com (Europa, predefinito), https://openapi.tuyaus.com (America), https://openapi.tuyain.com (India) */
   TUYA_ENDPOINT?: string
-  /** ogni quanti minuti si controllano i dispositivi (multiplo di 5, predefinito 10) */
+  /** ogni quanti minuti si controllano i dispositivi (multiplo di 5, predefinito 60 = ogni ora) */
   TUYA_POLL_MINUTES?: string
 }
 
@@ -382,7 +382,7 @@ async function automationAck(env: Env, req: Request): Promise<unknown> {
  */
 export async function runTuya(env: Env, now = Date.now(), force = false): Promise<{ fired: number }> {
   if (!tuyaConfigured(env)) return { fired: 0 }
-  const every = Math.max(5, Number(env.TUYA_POLL_MINUTES) || 10)
+  const every = Math.max(5, Number(env.TUYA_POLL_MINUTES) || 60)
   if (!force && Math.floor(now / 60_000) % every >= 5) return { fired: 0 } // il cron gira ogni 5 minuti: si controlla una volta ogni `every`
   const vapid: VapidKeys = { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT || 'https://example.invalid/' }
   const rules: TuyaRule[] = []
