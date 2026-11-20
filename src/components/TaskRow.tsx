@@ -33,6 +33,7 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
   const running = isRunning(task)
   const before = task.afterTaskId ? db.tasks.find((x) => x.id === task.afterTaskId) : undefined
   const waiting = isWaiting(task)
+  const device = task.onEvent ? (db.automations ?? []).find((a) => a.id === task.onEvent) : undefined
   const rooms = taskRooms(task).map((id) => db.rooms.find((r) => r.id === id)).filter((r): r is NonNullable<typeof r> => !!r)
   const room = (roomId && rooms.find((r) => r.id === roomId)) || rooms[0]
   const roomNames = rooms.length > 2 ? t('{n} stanze', { n: rooms.length }) : rooms.map((r) => r.name).join(', ')
@@ -60,7 +61,7 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
           <span className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">
             {showRoom && room && <span className="truncate">{roomNames}</span>}
             {showRoom && <span>·</span>}
-            <Repeat size={11} /> <span className="truncate">{task.afterTaskId ? t('Dopo «{task}»', { task: before?.name ?? '…' }) : recurrenceLabel(task)}</span>
+            <Repeat size={11} /> <span className="truncate">{task.onEvent ? t('Quando lo segnala «{name}»', { name: device?.name ?? '…' }) : task.afterTaskId ? t('Dopo «{task}»', { task: before?.name ?? '…' }) : recurrenceLabel(task)}</span>
           </span>
           <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
             {running ? (
@@ -68,7 +69,7 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
                 <Timer size={11} />{t('In corso · finisce alle {time} ({left})', { time: timeOfDay(task.runningUntil!), left: remainingLabel(remainingMs(task, now)) })}
               </span>
             ) : waiting ? (
-              <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-line/70 px-2 py-0.5 text-[11px] font-semibold text-muted"><Link2 size={11} />{t('In attesa di «{task}»', { task: before?.name ?? '…' })}</span>
+              <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-line/70 px-2 py-0.5 text-[11px] font-semibold text-muted"><Link2 size={11} />{task.onEvent ? t('In attesa del dispositivo «{name}»', { name: device?.name ?? '…' }) : t('In attesa di «{task}»', { task: before?.name ?? '…' })}</span>
             ) : (
               <span className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${URGENCY_STYLE[u]}`}>{dueLabel(task, now, roomId)}</span>
             )}

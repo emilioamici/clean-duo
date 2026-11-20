@@ -1,4 +1,5 @@
 import { authCallback, authConfigured, authLogout, authRefresh, authStart } from './auth'
+import { OPS, TuyaError, deviceInfo, evalCondition, tuyaConfigured, type Condition, type Op } from './tuya'
 import { sendWebPush, type PushSubscriptionData, type VapidKeys } from './webpush'
 
 /** Minimo indispensabile dell'archivio KV di Cloudflare (così il codice si prova anche in Node). */
@@ -29,6 +30,13 @@ export interface Env {
   /** solo test: indirizzi di Google per OAuth */
   GOOGLE_AUTH_URL?: string
   GOOGLE_OAUTH_API?: string
+  // ----- Tuya (facoltativo): chiavi del progetto su Tuya IoT Platform
+  TUYA_ACCESS_ID?: string
+  TUYA_ACCESS_SECRET?: string
+  /** data center, es. https://openapi.tuyaeu.com (Europa, predefinito), https://openapi.tuyaus.com (America), https://openapi.tuyain.com (India) */
+  TUYA_ENDPOINT?: string
+  /** ogni quanti minuti si controllano i dispositivi (multiplo di 5, predefinito 10) */
+  TUYA_POLL_MINUTES?: string
 }
 
 /** Servizi di push dei browser: gli unici indirizzi a cui il server accetta di inviare. */
@@ -255,15 +263,166 @@ export async function runScheduled(env: Env, now = Date.now()): Promise<{ sent: 
   return { sent }
 }
 
+/* ------------------------------------------------------------------ Tuya: regole, polling, eventi */
+
+interface TuyaRule extends Condition {
+  fileId: string
+  ruleId: string
+  deviceId: string
+  recipients: string[]
+  title: string
+  body: string
+  /** la condizione era già soddisfatta all'ultimo controllo: si segnala solo al passaggio «non soddisfatta → soddisfatta» */
+  active: boolean
+}
+interface AutomationEventItem { id: string; ruleId: string; at: number }
+
+const TU_INDEX = 'tu-index'
+const rulekey = (fileId: string, ruleId: string) => `tu:${fileId}:${ruleId}`
+const evKey = (fileId: string) => `ev:${fileId}`
+const validRuleId = (s: unknown): s is string => typeof s === 'string' && /^[\w-]{3,80}$/.test(s)
+const validDeviceId = (s: unknown): s is string => typeof s === 'string' && /^[\w-]{8,64}$/.test(s)
+
+function requireTuya(env: Env) {
+  if (!tuyaConfigured(env)) throw new HttpError(503, 'Tuya non è configurato sul server (mancano TUYA_ACCESS_ID e TUYA_ACCESS_SECRET).')
+}
+function tuyaFail(e: unknown): never {
+  if (e instanceof HttpError) throw e
+  if (e instanceof TuyaError) throw new HttpError(502, `Tuya: ${e.message} (codice ${e.code})`)
+  throw new HttpError(502, 'Tuya non risponde')
+}
+async function readIndex(env: Env): Promise<string[]> {
+  try { return JSON.parse((await env.SUBS.get(TU_INDEX)) ?? '[]') as string[] } catch { return [] }
+}
+const writeIndex = (env: Env, list: string[]) => (list.length ? env.SUBS.put(TU_INDEX, JSON.stringify(list)) : env.SUBS.delete(TU_INDEX))
+
+function parseCondition(body: Record<string, unknown>): Condition {
+  const code = body.code, op = body.op, value = body.value
+  if (typeof code !== 'string' || !/^[\w.-]{1,64}$/.test(code)) throw new HttpError(400, 'Codice del dato non valido')
+  if (typeof op !== 'string' || !OPS.includes(op as Op)) throw new HttpError(400, 'Operatore non valido')
+  if (typeof value !== 'string' || value.length > 64) throw new HttpError(400, 'Valore non valido')
+  return { code, op: op as Op, value }
+}
+
+/** Legge dal vivo i dati di un dispositivo (e, se indicata, valuta una condizione): serve a scegliere il dato giusto. */
+async function tuyaStatus(env: Env, req: Request): Promise<unknown> {
+  const body = await readJson(req)
+  if (!validFileId(body.fileId)) throw new HttpError(400, 'File non valido')
+  if (!validDeviceId(body.deviceId)) throw new HttpError(400, 'ID del dispositivo non valido')
+  await authenticate(env, req, body.fileId)
+  requireTuya(env)
+  try {
+    const info = await deviceInfo(env, body.deviceId)
+    const cond = body.condition && typeof body.condition === 'object' ? parseCondition(body.condition as Record<string, unknown>) : null
+    return { ok: true, ...info, matched: cond ? evalCondition(info.status, cond) : undefined }
+  } catch (e) { return tuyaFail(e) }
+}
+
+/** Registra (o aggiorna) la regola: da ora il server controlla il dispositivo e segnala quando la condizione si verifica. */
+async function tuyaRule(env: Env, req: Request): Promise<unknown> {
+  const body = await readJson(req)
+  if (!validFileId(body.fileId)) throw new HttpError(400, 'File non valido')
+  if (!validRuleId(body.ruleId)) throw new HttpError(400, 'Regola non valida')
+  if (!validDeviceId(body.deviceId)) throw new HttpError(400, 'ID del dispositivo non valido')
+  const cond = parseCondition(body)
+  const recipients = Array.isArray(body.recipients) ? [...new Set(body.recipients.filter(validEmail).map((e) => e.toLowerCase()))].slice(0, MAX_RECIPIENTS) : []
+  await authenticate(env, req, body.fileId)
+  requireTuya(env)
+  const key = rulekey(body.fileId, body.ruleId)
+  let prev: TuyaRule | null = null
+  try { prev = JSON.parse((await env.SUBS.get(key)) ?? 'null') as TuyaRule | null } catch { prev = null }
+  const same = prev && prev.deviceId === body.deviceId && prev.code === cond.code && prev.op === cond.op && prev.value === cond.value
+  const rule: TuyaRule = {
+    ...cond, fileId: body.fileId, ruleId: body.ruleId, deviceId: body.deviceId, recipients,
+    title: typeof body.title === 'string' ? body.title.slice(0, 120) : 'Clean Duo',
+    body: typeof body.body === 'string' ? body.body.slice(0, 300) : '',
+    active: same ? !!prev?.active : false, // se la condizione cambia si ricomincia da «non soddisfatta»
+  }
+  await env.SUBS.put(key, JSON.stringify(rule))
+  const idx = await readIndex(env)
+  if (!idx.includes(`${body.fileId}:${body.ruleId}`)) await writeIndex(env, [...idx, `${body.fileId}:${body.ruleId}`])
+  return { ok: true }
+}
+
+async function tuyaRuleDelete(env: Env, req: Request): Promise<unknown> {
+  const body = await readJson(req)
+  if (!validFileId(body.fileId) || !validRuleId(body.ruleId)) throw new HttpError(400, 'Richiesta non valida')
+  await authenticate(env, req, body.fileId)
+  await env.SUBS.delete(rulekey(body.fileId, body.ruleId))
+  const idx = await readIndex(env)
+  const next = idx.filter((k) => k !== `${body.fileId}:${body.ruleId}`)
+  if (next.length !== idx.length) await writeIndex(env, next)
+  return { ok: true }
+}
+
+/** Segnali in attesa per questa casa (l'app li applica al database e poi li conferma con /automation/ack). */
+async function automationEvents(env: Env, req: Request): Promise<unknown> {
+  const body = await readJson(req)
+  if (!validFileId(body.fileId)) throw new HttpError(400, 'File non valido')
+  await authenticate(env, req, body.fileId)
+  try { return { events: JSON.parse((await env.SUBS.get(evKey(body.fileId))) ?? '[]') as AutomationEventItem[] } } catch { return { events: [] } }
+}
+
+async function automationAck(env: Env, req: Request): Promise<unknown> {
+  const body = await readJson(req)
+  if (!validFileId(body.fileId) || !Array.isArray(body.ids)) throw new HttpError(400, 'Richiesta non valida')
+  await authenticate(env, req, body.fileId)
+  const ids = new Set(body.ids.filter((x): x is string => typeof x === 'string'))
+  let list: AutomationEventItem[] = []
+  try { list = JSON.parse((await env.SUBS.get(evKey(body.fileId))) ?? '[]') as AutomationEventItem[] } catch { list = [] }
+  const rest = list.filter((e) => !ids.has(e.id))
+  if (rest.length === 0) await env.SUBS.delete(evKey(body.fileId))
+  else if (rest.length !== list.length) await env.SUBS.put(evKey(body.fileId), JSON.stringify(rest), { expirationTtl: 14 * 24 * 3600 })
+  return { ok: true }
+}
+
+/**
+ * Cron: controlla i dispositivi collegati. Una chiamata a Tuya per dispositivo, anche con più regole.
+ * Il segnale parte solo quando la condizione PASSA da non soddisfatta a soddisfatta (poi si riarma quando torna non soddisfatta).
+ */
+export async function runTuya(env: Env, now = Date.now(), force = false): Promise<{ fired: number }> {
+  if (!tuyaConfigured(env)) return { fired: 0 }
+  const every = Math.max(5, Number(env.TUYA_POLL_MINUTES) || 10)
+  if (!force && Math.floor(now / 60_000) % every >= 5) return { fired: 0 } // il cron gira ogni 5 minuti: si controlla una volta ogni `every`
+  const vapid: VapidKeys = { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT || 'https://example.invalid/' }
+  const rules: TuyaRule[] = []
+  for (const k of await readIndex(env)) {
+    const i = k.indexOf(':')
+    try { const r = JSON.parse((await env.SUBS.get(rulekey(k.slice(0, i), k.slice(i + 1)))) ?? 'null') as TuyaRule | null; if (r) rules.push(r) } catch { /* regola illeggibile: si ignora */ }
+  }
+  const byDevice = new Map<string, TuyaRule[]>()
+  for (const r of rules) byDevice.set(r.deviceId, [...(byDevice.get(r.deviceId) ?? []), r])
+  let fired = 0
+  for (const [deviceId, list] of [...byDevice].slice(0, 20)) {
+    let status
+    try { status = (await deviceInfo(env, deviceId)).status } catch { continue } // errore di rete o di Tuya: si riprova al prossimo giro
+    for (const r of list) {
+      const met = evalCondition(status, r)
+      if (met === r.active) continue
+      await env.SUBS.put(rulekey(r.fileId, r.ruleId), JSON.stringify({ ...r, active: met }))
+      if (!met) continue
+      fired++
+      const ev: AutomationEventItem = { id: `${r.ruleId}-${now}`, ruleId: r.ruleId, at: now }
+      let queue: AutomationEventItem[] = []
+      try { queue = JSON.parse((await env.SUBS.get(evKey(r.fileId))) ?? '[]') as AutomationEventItem[] } catch { queue = [] }
+      await env.SUBS.put(evKey(r.fileId), JSON.stringify([...queue, ev].slice(-20)), { expirationTtl: 14 * 24 * 3600 })
+      for (const email of r.recipients) {
+        for (const s of await loadSubs(env, r.fileId, email)) await sendWebPush(s, { title: r.title, body: r.body, tag: `auto:${ev.id}` }, vapid).catch(() => undefined)
+      }
+    }
+  }
+  return { fired }
+}
+
 export default {
-  async scheduled(_e: unknown, env: Env): Promise<void> { await runScheduled(env) },
+  async scheduled(_e: unknown, env: Env): Promise<void> { await runScheduled(env); await runTuya(env) },
 
   async fetch(req: Request, env: Env): Promise<Response> {
     const headers = cors(env, req)
     const json = (status: number, data: unknown) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...headers } })
     const { pathname } = new URL(req.url)
     if (req.method === 'OPTIONS') return new Response(null, { status: headers['Access-Control-Allow-Origin'] ? 204 : 403, headers })
-    if (pathname === '/health') return json(200, { ok: true, auth: authConfigured(env) })
+    if (pathname === '/health') return json(200, { ok: true, auth: authConfigured(env), tuya: tuyaConfigured(env) })
     // l'accesso persistente passa da due pagine aperte nel browser (GET): Google rimanda qui dopo il consenso
     if (req.method === 'GET' && pathname === '/auth/start') return authStart(env, req)
     if (req.method === 'GET' && pathname === '/auth/callback') return authCallback(env, req)
@@ -276,6 +435,11 @@ export default {
       if (pathname === '/notify') return json(200, await notify(env, req))
       if (pathname === '/schedule') return json(200, await schedule(env, req))
       if (pathname === '/timer') return json(200, await timer(env, req))
+      if (pathname === '/tuya/status') return json(200, await tuyaStatus(env, req))
+      if (pathname === '/tuya/rule') return json(200, await tuyaRule(env, req))
+      if (pathname === '/tuya/rule/delete') return json(200, await tuyaRuleDelete(env, req))
+      if (pathname === '/automation/events') return json(200, await automationEvents(env, req))
+      if (pathname === '/automation/ack') return json(200, await automationAck(env, req))
       if (pathname === '/auth/refresh') { const r = await authRefresh(env, req); return json(r.status, r.body) }
       if (pathname === '/auth/logout') { const r = await authLogout(env, req); return json(r.status, r.body) }
       return json(404, { error: 'Non trovato' })

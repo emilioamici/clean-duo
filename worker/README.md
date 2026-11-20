@@ -69,6 +69,36 @@ In GitHub: *Settings → Secrets and variables → Actions → Variables*, crea:
 
 Poi rilancia il deploy (*Actions → Deploy su GitHub Pages → Run workflow*). Sono valori pubblici (finiscono nel JavaScript): nessun utente deve inserire nulla.
 
+## Dispositivi Tuya (facoltativo)
+Il Worker può controllare un dispositivo Tuya (per esempio un distributore di crocchette): quando segnala qualcosa, un'azione di Clean Duo va **da sola tra le cose da fare** e tutta la casa riceve una notifica.
+
+**Come funziona.** Il Worker interroga le API cloud di Tuya con le chiavi del tuo progetto (una chiamata ogni 10 minuti per dispositivo) e segnala solo quando la condizione **passa** da «non soddisfatta» a «soddisfatta» (poi si riarma quando torna normale). Il segnale viene messo in coda e **l'app lo applica al database** alla prima apertura o appena arriva la notifica. Il Worker non legge né scrive il database su Drive.
+
+**1. Tuya IoT Platform** (<https://iot.tuya.com>)
+1. *Cloud → Development →* il tuo progetto (es. «pet feeder») → *Overview*: copia **Access ID / Client ID** e **Access Secret / Client Secret**, e annota il **Data Center** (Europa centrale → `https://openapi.tuyaeu.com`; America → `tuyaus`; India → `tuyain`; Cina → `tuyacn`).
+2. *Service API*: servono **IoT Core** e **Authorization Token Management**. Se una chiamata risponde `permission deny` o `1106`, apri *Service API* e sottoscrivi il servizio indicato nell'errore.
+3. *Devices → Link App Account*: collega il tuo account Smart Life (QR code) così il distributore compare nel progetto. Copia il suo **Device ID**.
+
+**2. Worker** (dalla cartella `worker/`)
+```bash
+npx wrangler secret put TUYA_ACCESS_ID
+npx wrangler secret put TUYA_ACCESS_SECRET
+```
+In `wrangler.toml` togli il `#` davanti a `TUYA_ENDPOINT` e inserisci il tuo data center (se non è l'Europa). Poi `npx wrangler deploy`. `…/health` deve mostrare `"tuya":true`.
+
+**3. App**: *Impostazioni → Automazioni → Collega un dispositivo Tuya*
+1. Incolla il **Device ID** e premi **Leggi**: compaiono i dati veri del dispositivo (nome, online, codici e valori).
+2. Tocca il dato che segnala «crocchette in esaurimento». I distributori usano spesso un campo `fault` a bit (un numero in cui ogni bit è un guasto: es. cibo in esaurimento, cibo finito, inceppato) oppure un livello (`full`/`low`/`empty`): **il bit o il valore dipendono dal modello**, quindi scegli «ha il bit attivo» + il numero del bit, oppure «è uguale a» + il valore.
+3. **Verifica ora** dice se la condizione è soddisfatta *adesso*: per provarla svuota (o simula) il serbatoio e riverifica.
+4. Scegli l'azione: una nuova («Riempire il distributore», in una stanza) o una esistente. L'azione resta **in attesa** finché il dispositivo non segnala; quando la completi torna in attesa del prossimo segnale.
+
+**Limiti e note**
+- Ritardo: fino a ~10 minuti (intervallo di controllo + cron). Il dispositivo può inoltre aggiornare i dati su Tuya solo quando si sincronizza.
+- Le chiamate alle API Tuya hanno quote (il piano gratuito di prova è limitato): con un dispositivo e un controllo ogni 10 minuti sono circa 4.300 chiamate al mese (più il token, in cache). Aumenta `TUYA_POLL_MINUTES` per ridurle.
+- Se la condizione è **già soddisfatta** quando colleghi il dispositivo, il segnale parte al primo controllo.
+- Con l'app chiusa la notifica arriva subito (push), l'azione compare tra le cose da fare alla prima apertura.
+- Errori comuni: `1004`/«sign invalid» = Access ID/Secret o data center sbagliati; `1106` = dispositivo non collegato al progetto o servizio API non sottoscritto.
+
 ## Attivare le notifiche sui dispositivi
 Su ogni telefono o computer: *Impostazioni → Notifiche → Attiva notifiche*, poi concedi il permesso. Premi *Invia una notifica di prova* per verificare.
 

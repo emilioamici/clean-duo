@@ -64,3 +64,137 @@ describe('timer di fine durata', () => {
     expect((await call(env, { fileId: 'FILEID12345', id: 'task1-1', at: Date.now() + 1000, title: 'x', recipients: [] })).status).toBe(400)
   })
 })
+
+describe('Tuya', () => {
+  const GOOGLE = (u: string) => (u.includes('/about') ? new Response(JSON.stringify({ user: { emailAddress: 'a@example.com' } })) : new Response('{"id":"x"}'))
+  let faultValue: unknown = 0
+  let tuyaCalls: Array<{ url: string; headers: Record<string, string> }> = []
+
+  function setup() {
+    faultValue = 0; tuyaCalls = []
+    const { env, kv } = makeEnv()
+    const e = env as Env & Record<string, unknown>
+    e.TUYA_ACCESS_ID = 'ACCESSID123'; e.TUYA_ACCESS_SECRET = 'SECRET456'; e.VAPID_PUBLIC_KEY = 'x'; e.VAPID_PRIVATE_KEY = 'y'
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const u = String(input)
+      if (u.includes('openapi.tuyaeu.com')) {
+        tuyaCalls.push({ url: u, headers: (init?.headers ?? {}) as Record<string, string> })
+        if (u.includes('/v1.0/token')) return new Response(JSON.stringify({ success: true, result: { access_token: 'TK', expire_time: 7200 } }))
+        if (u.includes('/v1.0/devices/BADDEVICE1')) return new Response(JSON.stringify({ success: false, code: 1106, msg: 'permission deny' }))
+        if (u.includes('/v1.0/devices/FEEDER0001')) return new Response(JSON.stringify({ success: true, result: { name: 'Distributore', online: true, category: 'cwwsq', status: [{ code: 'fault', value: faultValue }, { code: 'battery_percentage', value: 80 }] } }))
+        return new Response(JSON.stringify({ success: false, code: 404, msg: 'not found' }))
+      }
+      return GOOGLE(u)
+    }) as typeof fetch
+    return { env: e as Env, kv }
+  }
+  const call = (env: Env, path: string, body: unknown) => worker.fetch(new Request(`https://w.example${path}`, { method: 'POST', headers: { Origin: 'https://utente.github.io', Authorization: 'Bearer tok', 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), env)
+  const rule = { fileId: 'FILEID12345', ruleId: 'auto-1', deviceId: 'FEEDER0001', code: 'fault', op: 'bit', value: '1', recipients: ['a@example.com'], title: 'Distributore', body: 'Riempire' }
+
+  it('la firma è HMAC-SHA256 maiuscola di client_id + t + stringToSign (richiesta del token)', async () => {
+    const { env } = setup()
+    const { createHash, createHmac } = await import('node:crypto')
+    await call(env, '/tuya/status', { fileId: 'FILEID12345', deviceId: 'FEEDER0001' })
+    const h = tuyaCalls[0].headers
+    const stringToSign = ['GET', createHash('sha256').update('').digest('hex'), '', '/v1.0/token?grant_type=1'].join('\n')
+    const expected = createHmac('sha256', 'SECRET456').update('ACCESSID123' + h.t + stringToSign).digest('hex').toUpperCase()
+    expect(h.sign).toBe(expected)
+    expect(h.client_id).toBe('ACCESSID123')
+    // richiesta di servizio: firma con il token nel mezzo
+    const h2 = tuyaCalls[1].headers
+    const s2 = ['GET', createHash('sha256').update('').digest('hex'), '', '/v1.0/devices/FEEDER0001'].join('\n')
+    expect(h2.sign).toBe(createHmac('sha256', 'SECRET456').update('ACCESSID123' + 'TK' + h2.t + s2).digest('hex').toUpperCase())
+    expect(h2.access_token).toBe('TK')
+  })
+
+  it('condizioni: uguale, minore, bit, contiene; dato mancante = non soddisfatta', async () => {
+    const { evalCondition } = await import('./tuya')
+    const st = [{ code: 'fault', value: 6 }, { code: 'level', value: 'low' }, { code: 'weight', value: 12 }, { code: 'flag', value: true }]
+    expect(evalCondition(st, { code: 'fault', op: 'bit', value: '1' })).toBe(true)
+    expect(evalCondition(st, { code: 'fault', op: 'bit', value: '0' })).toBe(false)
+    expect(evalCondition(st, { code: 'level', op: 'eq', value: 'low' })).toBe(true)
+    expect(evalCondition(st, { code: 'level', op: 'ne', value: 'low' })).toBe(false)
+    expect(evalCondition(st, { code: 'weight', op: 'lt', value: '20' })).toBe(true)
+    expect(evalCondition(st, { code: 'weight', op: 'gt', value: '20' })).toBe(false)
+    expect(evalCondition(st, { code: 'flag', op: 'eq', value: 'true' })).toBe(true)
+    expect(evalCondition(st, { code: 'level', op: 'contains', value: 'ow' })).toBe(true)
+    expect(evalCondition(st, { code: 'assente', op: 'eq', value: '1' })).toBe(false)
+  })
+
+  it('/tuya/status legge i dati veri e valuta la condizione', async () => {
+    const { env } = setup()
+    faultValue = 2
+    const res = await call(env, '/tuya/status', { fileId: 'FILEID12345', deviceId: 'FEEDER0001', condition: { code: 'fault', op: 'bit', value: '1' } })
+    const j = await res.json() as { name: string; status: Array<{ code: string }>; matched: boolean }
+    expect(res.status).toBe(200)
+    expect(j.name).toBe('Distributore')
+    expect(j.status.map((s) => s.code)).toContain('fault')
+    expect(j.matched).toBe(true)
+  })
+
+  it('errori di Tuya e Tuya non configurato sono chiari', async () => {
+    const { env } = setup()
+    const bad = await call(env, '/tuya/status', { fileId: 'FILEID12345', deviceId: 'BADDEVICE1' })
+    expect(bad.status).toBe(502)
+    expect(((await bad.json()) as { error: string }).error).toContain('1106')
+    delete (env as unknown as Record<string, unknown>).TUYA_ACCESS_ID
+    expect((await call(env, '/tuya/status', { fileId: 'FILEID12345', deviceId: 'FEEDER0001' })).status).toBe(503)
+  })
+
+  it('il segnale parte solo al passaggio «non soddisfatta → soddisfatta», senza doppioni, e si riarma', async () => {
+    const { runTuya } = await import('./index')
+    const { env, kv } = setup()
+    expect((await call(env, '/tuya/rule', rule)).status).toBe(200)
+    const queue = async () => (await (await call(env, '/automation/events', { fileId: 'FILEID12345' })).json() as { events: Array<{ id: string; ruleId: string }> }).events
+
+    faultValue = 0
+    expect((await runTuya(env, 1_000_000, true)).fired).toBe(0)
+    faultValue = 2 // bit 1 attivo: crocchette in esaurimento
+    expect((await runTuya(env, 2_000_000, true)).fired).toBe(1)
+    expect((await queue())).toHaveLength(1)
+    expect((await runTuya(env, 3_000_000, true)).fired).toBe(0) // ancora soddisfatta: nessun doppione
+    faultValue = 0
+    await runTuya(env, 4_000_000, true) // riarmo
+    faultValue = 2
+    expect((await runTuya(env, 5_000_000, true)).fired).toBe(1)
+    const events = await queue()
+    expect(events).toHaveLength(2)
+    // conferma: l'app li ha applicati
+    await call(env, '/automation/ack', { fileId: 'FILEID12345', ids: events.map((e) => e.id) })
+    expect(await queue()).toHaveLength(0)
+    expect(kv.has('ev:FILEID12345')).toBe(false)
+  })
+
+  it('se la condizione è già soddisfatta quando si crea la regola, segnala subito al primo controllo', async () => {
+    const { runTuya } = await import('./index')
+    const { env } = setup()
+    faultValue = 2
+    await call(env, '/tuya/rule', rule)
+    expect((await runTuya(env, 1_000_000, true)).fired).toBe(1)
+  })
+
+  it('una chiamata a Tuya per dispositivo anche con più regole; eliminare la regola la ferma', async () => {
+    const { runTuya } = await import('./index')
+    const { env } = setup()
+    await call(env, '/tuya/rule', rule)
+    await call(env, '/tuya/rule', { ...rule, ruleId: 'auto-2', code: 'battery_percentage', op: 'lt', value: '20' })
+    tuyaCalls.length = 0
+    await runTuya(env, 1_000_000, true)
+    expect(tuyaCalls.filter((c) => c.url.includes('/v1.0/devices/FEEDER0001'))).toHaveLength(1)
+    await call(env, '/tuya/rule/delete', { fileId: 'FILEID12345', ruleId: 'auto-1' })
+    await call(env, '/tuya/rule/delete', { fileId: 'FILEID12345', ruleId: 'auto-2' })
+    tuyaCalls.length = 0
+    await runTuya(env, 2_000_000, true)
+    expect(tuyaCalls).toHaveLength(0)
+  })
+
+  it('il cron controlla una volta ogni TUYA_POLL_MINUTES', async () => {
+    const { runTuya } = await import('./index')
+    const { env } = setup()
+    faultValue = 2
+    await call(env, '/tuya/rule', rule)
+    const at = (min: number) => min * 60_000
+    expect((await runTuya(env, at(35))).fired).toBe(0) // minuto 35 con intervallo 10: salta
+    expect((await runTuya(env, at(40))).fired).toBe(1) // minuto 40: controlla
+  })
+})

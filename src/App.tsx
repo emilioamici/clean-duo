@@ -6,6 +6,7 @@ import { RankingView } from './components/RankingView'
 import { RoomsView } from './components/RoomsView'
 import { SettingsView } from './components/SettingsView'
 import { MemberSheet, MemberSwitcher, RoomSheet, TaskSheet } from './components/Sheets'
+import { AutomationSheet } from './components/AutomationSheet'
 import { TodayView } from './components/TodayView'
 import { Gate } from './components/Gate'
 import { useApp } from './store/AppContext'
@@ -54,6 +55,7 @@ export default function App() {
               <TaskSheet />
               <RoomSheet />
               <MemberSheet />
+              <AutomationSheet />
               <MemberSwitcher />
               <NotificationCenter />
               <NotificationToast />
