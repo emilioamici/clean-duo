@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Star } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { nextDue, urgencyOf } from '../lib/clean'
 import { starsSince, weekStart } from '../lib/stats'
 import { isRunning } from '../lib/timers'
@@ -13,7 +13,7 @@ import { RoomIcon } from './icons'
 import { TaskRow } from './TaskRow'
 import { CleanBar, PageHeader, Segmented } from './ui'
 
-type Filter = 'todo' | 'next' | 'all'
+type Filter = 'todo' | 'running' | 'next' | 'all'
 
 export function TodayView() {
   const { db, me } = useApp()
@@ -22,15 +22,22 @@ export function TodayView() {
   const [room, setRoom] = useState<string | 'all'>('all')
 
   const active = useMemo(() => db.tasks.filter((x) => !x.archived), [db.tasks])
-  const todoCount = active.filter((x) => ['overdue', 'today'].includes(urgencyOf(x))).length
-  const overdueCount = active.filter((x) => urgencyOf(x) === 'overdue').length
+  // le azioni in corso stanno nella loro scheda (non tra quelle «da fare»: qualcuno se ne sta già occupando)
+  const runningCount = active.filter(isRunning).length
+  const todoCount = active.filter((x) => ['overdue', 'today'].includes(urgencyOf(x)) && !isRunning(x)).length
+  const overdueCount = active.filter((x) => urgencyOf(x) === 'overdue' && !isRunning(x)).length
+  // la scheda «In corso» c'è solo se ci sono azioni in corso; quando l'ultima finisce si torna a «Da fare»
+  useEffect(() => { if (filter === 'running' && runningCount === 0) setFilter('todo') }, [filter, runningCount])
 
   const list = useMemo(() => {
     return active
       .filter((x) => room === 'all' || x.roomId === room)
       .filter((x) => {
         const u = urgencyOf(x)
-        return filter === 'all' || (filter === 'todo' ? u === 'overdue' || u === 'today' || isRunning(x) : (u === 'soon' || u === 'later') && !isRunning(x))
+        if (filter === 'all') return true
+        if (filter === 'running') return isRunning(x)
+        if (isRunning(x)) return false
+        return filter === 'todo' ? u === 'overdue' || u === 'today' : u === 'soon' || u === 'later'
       })
       .sort((a, b) => Number(isRunning(b)) - Number(isRunning(a)) || (nextDue(a) ?? 8.64e15) - (nextDue(b) ?? 8.64e15) || b.stars - a.stars)
   }, [active, filter, room])
@@ -56,6 +63,7 @@ export function TodayView() {
               <p className="mt-1 text-sm text-muted">
                 {todoCount === 0 ? t('nulla da fare, che meraviglia') : todoCount === 1 ? t('azione da fare') : t('azioni da fare')}
                 {overdueCount > 0 && <span className="font-semibold text-exp"> · {t('{n} in ritardo', { n: overdueCount })}</span>}
+                {runningCount > 0 && <span className="font-semibold text-brand"> · {t('{n} in corso', { n: runningCount })}</span>}
               </p>
             </div>
             <div className="text-right">
@@ -74,7 +82,12 @@ export function TodayView() {
         <Segmented<Filter>
           value={filter}
           onChange={setFilter}
-          options={[{ id: 'todo', label: t('Da fare') }, { id: 'next', label: t('Prossime') }, { id: 'all', label: t('Tutte') }]}
+          options={[
+            { id: 'todo', label: t('Da fare') },
+            ...(runningCount > 0 ? [{ id: 'running' as const, label: t('In corso ({n})', { n: runningCount }) }] : []),
+            { id: 'next', label: t('Prossime') },
+            { id: 'all', label: t('Tutte') },
+          ]}
         />
       </div>
 

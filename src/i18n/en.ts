@@ -313,6 +313,8 @@ export const EN: Record<string, string> = {
   "Annullare «{task}»? Non verrà completata.": "Cancel “{task}”? It will not be completed.",
   "Annulla {name}": "Cancel {name}",
   "Completa ora {name}": "Complete {name} now",
+  "In corso ({n})": "Running ({n})",
+  "{n} in corso": "{n} running",
   "Hai un invito per una casa: accedi con Google per entrare.": "You have an invitation to a home: sign in with Google to join.",
   "Ti hanno invitato in una casa": "You have been invited to a home",
   "Per entrare tocca il pulsante e scegli il file della casa: serve a dare a Clean Duo il permesso di aprirlo. Si fa una volta sola.": "To join, tap the button and choose the home’s file: it gives Clean Duo permission to open it. You only do this once.",
