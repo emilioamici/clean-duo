@@ -324,6 +324,8 @@ export const EN: Record<string, string> = {
   "Crea prima un’altra azione da cui dipendere.": "Create another task first to depend on.",
   "Resta in attesa e va tra le cose da fare quando l’altra è completata (o, se a tempo, finita).": "It waits, and moves to your to-do list when the other one is completed (or, if timed, finished).",
   "Azione precedente": "Previous task",
+  "Annulla il completamento di {task}": "Undo the completion of {task}",
+  "Annullare il completamento di «{task}»? Le stelle si tolgono e l’azione torna da fare.": "Undo the completion of “{task}”? The stars are removed and the task goes back to your to-do list.",
   "Dopo «{task}»": "After “{task}”",
   "In attesa di «{task}»": "Waiting for “{task}”",
 }

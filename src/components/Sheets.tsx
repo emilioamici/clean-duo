@@ -21,6 +21,8 @@ function DeleteButton({ onConfirm, label }: { onConfirm: () => void; label: stri
 }
 
 /* ------------------------------ TASK ------------------------------ */
+/** Su telefono la tastiera si apre solo se tocchi il campo: aprirla da sola sposta la schermata. */
+const TOUCH = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches
 const WEEKDAYS = [1, 2, 3, 4, 5, 6, 0]
 
 function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: string; onClose: () => void }) {
@@ -64,7 +66,7 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
   return (
     <div>
       <label className="label">{t('Nome')}</label>
-      <input className="field" placeholder={t('Es. Pulire il forno')} value={name} onChange={(e) => setName(e.target.value)} autoFocus={!existing} />
+      <input className="field" placeholder={t('Es. Pulire il forno')} value={name} onChange={(e) => setName(e.target.value)} autoFocus={!existing && !TOUCH} />
 
       <label className="label">{t('Stanza')}</label>
       <div className="-mx-1 flex flex-wrap gap-2 px-1">
@@ -184,7 +186,7 @@ function RoomForm({ id, onClose }: { id?: string; onClose: () => void }) {
   return (
     <div>
       <label className="label">{t('Nome')}</label>
-      <input className="field" placeholder={t('Es. Studio')} value={name} onChange={(e) => setName(e.target.value)} autoFocus={!existing} />
+      <input className="field" placeholder={t('Es. Studio')} value={name} onChange={(e) => setName(e.target.value)} autoFocus={!existing && !TOUCH} />
       <label className="label">{t('Icona')}</label>
       <div className="grid grid-cols-6 gap-2">
         {ROOM_ICONS.map((i) => (
@@ -229,7 +231,7 @@ function MemberForm({ id, onClose }: { id?: string; onClose: () => void }) {
   return (
     <div>
       <label className="label">{t('Nome')}</label>
-      <input className="field" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!existing} />
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!existing && !TOUCH} />
       <label className="label">{t('Email Google (facoltativa)')}</label>
       <input className="field" type="email" inputMode="email" placeholder="nome@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)} />
       <p className="mt-1 px-1 text-xs text-muted">{t('L’email serve a ricevere le notifiche anche con l’app chiusa.')}</p>

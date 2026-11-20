@@ -74,6 +74,9 @@ export interface ActivityLog {
   at: number
   /** completata da sola alla fine della durata */
   timer?: boolean
+  /** stato dell'azione prima di questo completamento (per poterlo annullare esattamente) */
+  prev?: number | null
+  prevTrigger?: number | null
 }
 
 export interface Settings {

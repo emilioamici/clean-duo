@@ -13,6 +13,7 @@ import { DEFAULT_REMINDER_TIME, buildReminders, dueNow, reminderText, validTime 
 import { t } from '../i18n'
 import { finalizeTimers, startRunning, timerLogId } from '../lib/timers'
 import { triggerDependents, unlinkMissing } from '../lib/deps'
+import { undoCompletion } from '../lib/history'
 import type { GoogleConfig, GoogleUser } from '../services/googleDriveService'
 
 type SyncStatus = 'demo' | 'idle' | 'syncing' | 'offline' | 'auth' | 'error'
@@ -105,6 +106,8 @@ interface Ctx {
   upsertTask: (t: Omit<Task, 'id' | 'updatedAt' | 'createdAt' | 'lastCompletedAt' | 'completions' | 'archived' | 'runningUntil' | 'runningBy' | 'triggeredAt'> & { id?: string }) => void
   deleteTask: (id: string) => void
   completeTask: (taskId: string, memberId: string) => number
+  /** Annulla un completamento dalla cronologia: le stelle si tolgono e l'azione torna da fare. */
+  deleteLog: (logId: string) => void
   /** Avvia l'azione con durata: resta «in corso» e si completa da sola alla fine. Ritorna l'ora di fine (ms). */
   startTimer: (taskId: string, memberId: string) => number | null
   /** Annulla un'azione in corso senza completarla. */
@@ -496,10 +499,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       tasks: triggerDependents(d.tasks.map((x) => x.id === taskId
         ? { ...x, lastCompletedAt: now, completions: x.completions + 1, archived: x.recurrence.type === 'once' && !x.afterTaskId, triggeredAt: x.afterTaskId ? null : x.triggeredAt, updatedAt: now }
         : x), taskId, now, now),
-      logs: [{ id: uid('l'), taskId, taskName: task.name, roomId: task.roomId, memberId, stars: task.stars, at: now }, ...d.logs].slice(0, 2000),
+      logs: [{ id: uid('l'), taskId, taskName: task.name, roomId: task.roomId, memberId, stars: task.stars, at: now, prev: task.lastCompletedAt, prevTrigger: task.triggeredAt ?? null }, ...d.logs].slice(0, 2000),
     }))
     return task.stars
   }
+
+  const deleteLog: Ctx['deleteLog'] = (logId) => mutate((d) => undoCompletion(d, logId))
 
   const upsertMember: Ctx['upsertMember'] = (m) => {
     const id = m.id ?? uid('m')
@@ -655,7 +660,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, config, setConfig, theme, setTheme, meId, me, setMeId, toast, notify,
     persistent, prefs, setPrefs, notifications, unread, markRead, markAllRead, clearNotifications, toastNotif, dismissToastNotif, centerOpen, setCenterOpen,
     enableNotifications, disableNotifications, sendTestPush,
-    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, startTimer, cancelTimer: cancelTimerFn, upsertMember, deleteMember, updateSettings,
+    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, deleteLog, startTimer, cancelTimer: cancelTimerFn, upsertMember, deleteMember, updateSettings,
     demoSkipped, setDemoSkipped, offlineSkipped, setOfflineSkipped,
     syncNow, connect, reconnect, createHouse, joinHouse, shareWith, disconnect, resetDemo,
   }

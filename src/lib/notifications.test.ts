@@ -172,3 +172,78 @@ describe('dipendenze tra azioni', () => {
     expect(unlinkMissing([b, c])[0].afterTaskId).toBeUndefined()
   })
 })
+
+describe('annullare un completamento dalla cronologia', () => {
+  const completed = () => {
+    const db = base()
+    const at = Date.now()
+    const task = { ...db.tasks[0], id: 'tt', lastCompletedAt: at, completions: 1 }
+    const log = { id: 'L1', taskId: 'tt', taskName: task.name, roomId: task.roomId, memberId: 'm1', stars: 2, at }
+    return { db: { ...db, tasks: [task, ...db.tasks.slice(1)], logs: [log, ...db.logs] }, at }
+  }
+
+  it('toglie le stelle e l\'azione torna da fare (mai fatta)', async () => {
+    const { undoCompletion } = await import('./history')
+    const { db } = completed()
+    const out = undoCompletion(db, 'L1')
+    expect(out.logs.some((l) => l.id === 'L1')).toBe(false)
+    expect(out.tasks[0].lastCompletedAt).toBeNull()
+    expect(out.tasks[0].completions).toBe(0)
+    expect(out.tombstones.L1).toBeGreaterThan(0)
+  })
+
+  it('con un completamento precedente si torna a quello; un\'azione una tantum archiviata torna attiva', async () => {
+    const { undoCompletion } = await import('./history')
+    const { db, at } = completed()
+    const prev = { id: 'L0', taskId: 'tt', taskName: 'x', roomId: 'r1', memberId: 'm1', stars: 2, at: at - 86_400_000 }
+    const out = undoCompletion({ ...db, logs: [...db.logs, prev] }, 'L1')
+    expect(out.tasks[0].lastCompletedAt).toBe(prev.at)
+    const once = { ...db, tasks: [{ ...db.tasks[0], recurrence: { type: 'once' as const, every: 1 }, archived: true }, ...db.tasks.slice(1)] }
+    expect(undoCompletion(once, 'L1').tasks[0].archived).toBe(false)
+  })
+
+  it('ripristina esattamente lo stato di prima, anche se lo storico non coincide', async () => {
+    const { undoCompletion } = await import('./history')
+    const { db, at } = completed()
+    const before = at - 3 * 86_400_000
+    const withPrev = { ...db, logs: [{ ...db.logs[0], prev: before }, ...db.logs.slice(1)], tasks: [{ ...db.tasks[0], lastCompletedAt: at }, ...db.tasks.slice(1)] }
+    expect(undoCompletion(withPrev, 'L1').tasks[0].lastCompletedAt).toBe(before)
+  })
+
+  it('un\'azione che dipendeva da un\'altra torna «da fare» (riattivata) se annulli il suo completamento', async () => {
+    const { undoCompletion } = await import('./history')
+    const { db, at } = completed()
+    const dep = { ...db.tasks[1], id: 'dep2', afterTaskId: 'zz', lastCompletedAt: at, triggeredAt: null }
+    const log = { id: 'L2', taskId: 'dep2', taskName: 'd', roomId: 'r1', memberId: 'm1', stars: 1, at, prev: null, prevTrigger: at - 5000 }
+    const out = undoCompletion({ ...db, tasks: [...db.tasks, dep], logs: [log, ...db.logs] }, 'L2')
+    expect(out.tasks.find((x) => x.id === 'dep2')!.triggeredAt).toBe(at - 5000)
+  })
+
+  it('chi dipendeva da quell\'azione torna in attesa', async () => {
+    const { undoCompletion } = await import('./history')
+    const { db, at } = completed()
+    const dep = { ...db.tasks[1], id: 'dep', afterTaskId: 'tt', triggeredAt: at }
+    expect(undoCompletion({ ...db, tasks: [...db.tasks, dep] }, 'L1').tasks.find((x) => x.id === 'dep')!.triggeredAt).toBeNull()
+  })
+
+  it('un dispositivo con dati vecchi non fa tornare il completamento annullato, in nessun ordine di merge', async () => {
+    const { undoCompletion } = await import('./history')
+    const { db } = completed()
+    const stale = clone(db)
+    const fresh = undoCompletion(db, 'L1', Date.now() + 1000)
+    for (const [a, b] of [[stale, fresh], [fresh, stale]]) {
+      const m = mergeDb(a, b)
+      expect(m.logs.some((l) => l.id === 'L1')).toBe(false)
+      expect(m.tasks.find((x) => x.id === 'tt')!.lastCompletedAt).toBeNull()
+    }
+  })
+
+  it('due completamenti offline si conservano entrambi nell\'azione', () => {
+    const a = base(); const b = clone(a)
+    const at = Date.now()
+    a.logs.unshift({ id: 'x1', taskId: 't1', taskName: 'x', roomId: 'r1', memberId: 'm1', stars: 1, at })
+    a.tasks[0] = { ...a.tasks[0], lastCompletedAt: at, updatedAt: at }
+    b.logs.unshift({ id: 'y1', taskId: 't1', taskName: 'x', roomId: 'r1', memberId: 'm2', stars: 1, at: at + 600_000 })
+    expect(mergeDb(a, b).tasks.find((x) => x.id === 't1')!.lastCompletedAt).toBe(at + 600_000)
+  })
+})

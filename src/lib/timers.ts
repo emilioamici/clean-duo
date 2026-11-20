@@ -50,7 +50,7 @@ export function finalizeTimers(db: AppDatabase, now = Date.now()): AppDatabase {
     const by = x.runningBy && db.members.some((m) => m.id === x.runningBy) ? x.runningBy : db.members[0]?.id
     const id = timerLogId(x.id, until)
     if (by && !logs.some((l) => l.id === id)) {
-      logs.unshift({ id, taskId: x.id, taskName: x.name, roomId: x.roomId, memberId: by, stars: x.stars, at: until, timer: true })
+      logs.unshift({ id, taskId: x.id, taskName: x.name, roomId: x.roomId, memberId: by, stars: x.stars, at: until, timer: true, prev: x.lastCompletedAt, prevTrigger: x.triggeredAt ?? null })
     }
     return {
       ...x, lastCompletedAt: Math.max(x.lastCompletedAt ?? 0, until), completions: x.completions + 1,

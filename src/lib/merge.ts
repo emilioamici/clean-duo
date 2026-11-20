@@ -22,14 +22,21 @@ function mergeList<T extends Versioned>(
     .sort((x, y) => x.id.localeCompare(y.id))
 }
 
-function combineTask(newer: Task, older: Task): Task {
-  // Due persone possono completare la stessa task offline: non perdere mai un completamento.
-  return {
-    ...newer,
-    lastCompletedAt: Math.max(newer.lastCompletedAt ?? 0, older.lastCompletedAt ?? 0) || null,
-    completions: Math.max(newer.completions, older.completions),
-    archived: newer.archived || older.archived,
-  }
+/**
+ * Per le azioni vince la modifica più recente (anche per un completamento annullato). Il completamento che non fosse
+ * presente nella copia più recente (due persone completano offline) lo si recupera dallo storico: vedi `reconcileWithLogs`.
+ */
+const combineTask = (newer: Task): Task => newer
+
+/** Se nello storico c'è un completamento più recente di quello registrato nell'azione, l'azione lo recepisce. Gli storici annullati non contano. */
+function reconcileWithLogs(tasks: Task[], logs: ActivityLog[]): Task[] {
+  const last = new Map<string, number>()
+  for (const l of logs) last.set(l.taskId, Math.max(last.get(l.taskId) ?? 0, l.at))
+  return tasks.map((x) => {
+    const m = last.get(x.id) ?? 0
+    if (m <= (x.lastCompletedAt ?? 0)) return x
+    return { ...x, lastCompletedAt: m, completions: x.completions + 1, archived: x.archived || (x.recurrence.type === 'once' && !x.afterTaskId) }
+  })
 }
 
 function mergeLogs(a: ActivityLog[], b: ActivityLog[], tombstones: Record<string, number>): ActivityLog[] {
@@ -56,6 +63,7 @@ export function mergeDb(local: AppDatabase, remote: AppDatabase): AppDatabase {
   const settingsFromLocal = local.settingsUpdatedAt >= remote.settingsUpdatedAt
   const base = settingsFromLocal ? local : remote
 
+  const logs = mergeLogs(local.logs, remote.logs, tombstones)
   return {
     schema: 1,
     houseName: base.houseName,
@@ -63,8 +71,8 @@ export function mergeDb(local: AppDatabase, remote: AppDatabase): AppDatabase {
     settingsUpdatedAt: base.settingsUpdatedAt,
     members: mergeList(local.members, remote.members, tombstones),
     rooms: mergeList(local.rooms, remote.rooms, tombstones),
-    tasks: unlinkMissing(mergeList(local.tasks, remote.tasks, tombstones, combineTask)),
-    logs: mergeLogs(local.logs, remote.logs, tombstones),
+    tasks: unlinkMissing(reconcileWithLogs(mergeList(local.tasks, remote.tasks, tombstones, combineTask), logs)),
+    logs,
     tombstones,
     lastUpdated: Math.max(local.lastUpdated, remote.lastUpdated),
   }
