@@ -72,7 +72,7 @@ export interface Task {
   runningBy?: string
   /** Stanze per cui verrà completata alla fine (assente = tutte) */
   runningRooms?: string[]
-  /** Una tantum completata -> archiviata */
+  /** Non più usato per le azioni «su richiesta» (restano visibili); resta per i dati delle versioni precedenti */
   archived: boolean
   updatedAt: number
 }

@@ -68,7 +68,6 @@ function RoomDetail() {
   if (!room) return null
   const pct = roomCleanliness(room, db.tasks)
   const tasks = db.tasks.filter((x) => inRoom(x, room.id) && !x.archived).sort((a, b) => (nextDue(a, room.id) ?? 8.64e15) - (nextDue(b, room.id) ?? 8.64e15))
-  const archived = db.tasks.filter((x) => inRoom(x, room.id) && x.archived).length
 
   return (
     <div>
@@ -97,7 +96,6 @@ function RoomDetail() {
           </div>
         )}
       </div>
-      {archived > 0 && <p className="mt-3 text-center text-xs text-muted">{t('{n} azioni una tantum completate in archivio', { n: archived })}</p>}
       <Fab label={t('Nuova azione')} onClick={() => openTaskSheet({ roomId: room.id })} />
     </div>
   )

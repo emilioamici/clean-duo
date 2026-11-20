@@ -4,6 +4,12 @@ import type { Task } from '../types'
 /** L'azione non ha una scadenza propria: parte quando un'altra azione è completata o quando un dispositivo lo segnala. */
 export const isEventDriven = (task: Task): boolean => !!(task.afterTaskId || task.onEvent)
 
+/** «Su richiesta»: senza ricorrenza né attese. Dopo il completamento resta sempre visibile e si può rifare quando serve. */
+export const isOnDemand = (task: Task): boolean => task.recurrence.type === 'once' && !isEventDriven(task)
+
+/** Le azioni su richiesta non si archiviano più: quelle già archiviate (versioni precedenti) tornano visibili. */
+export const reviveOnDemand = (task: Task): Task => (task.archived && isOnDemand(task) ? { ...task, archived: false } : task)
+
 export const isWaiting = (task: Task): boolean => isEventDriven(task) && !task.triggeredAt && !task.archived
 
 /**

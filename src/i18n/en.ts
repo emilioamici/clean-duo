@@ -1,5 +1,7 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "Su richiesta": "On demand",
+  "Nessuna scadenza ripetuta: resta sempre nella stanza e la puoi rifare quando serve.": "No repeating due date: it always stays in the room and you can redo it whenever you need.",
   "Ti invito nella casa «{name}» su Clean Duo. Apri questo link e accedi con questo account Google: il database ti verrà collegato in automatico. {link}": "I’m inviting you to the house “{name}” on Clean Duo. Open this link and sign in with this Google account: the database will be linked automatically. {link}",
   "Cambia account": "Switch account",
   "Sincronizza ora": "Sync now",
@@ -255,7 +257,6 @@ export const EN: Record<string, string> = {
   "Sincronizza": "Sync",
   "Sincronizzato": "Synced",
   "Sincronizzazione e account": "Sync and account",
-  "Singola": "Once",
   "Soggiorno": "Living room",
   "Sono io": "It’s me",
   "Spolverare i mobili": "Dust the furniture",
@@ -280,7 +281,6 @@ export const EN: Record<string, string> = {
   "Tutto in ordine!": "All tidy!",
   "Ultime 6 settimane": "Last 6 weeks",
   "Un membro": "A member",
-  "Una tantum": "One-off",
   "adesso": "now",
   "aggiornato {when}": "updated {when}",
   "azione da fare": "task to do",
@@ -306,7 +306,6 @@ export const EN: Record<string, string> = {
   "{a} azioni · {b} stanze": "{a} tasks · {b} rooms",
   "{name} è entrato in casa": "{name} joined the home",
   "{n} azioni completate": "{n} tasks completed",
-  "{n} azioni una tantum completate in archivio": "{n} one-off tasks completed in the archive",
   "{n} da fare": "{n} to do",
   "{n} giorni alla fine": "{n} days left",
   "{n} giorni fa": "{n} days ago",

@@ -148,7 +148,8 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
       {afterId === null && !eventId && (
         <>
       <label className="label">{t('Ricorrenza')}</label>
-      <Segmented<RecurrenceType> value={type} onChange={setType} options={[{ id: 'once', label: t('Singola') }, { id: 'daily', label: t('Giorni') }, { id: 'weekly', label: t('Sett.') }, { id: 'monthly', label: t('Mesi') }]} />
+      <Segmented<RecurrenceType> value={type} onChange={setType} options={[{ id: 'once', label: t('Su richiesta') }, { id: 'daily', label: t('Giorni') }, { id: 'weekly', label: t('Sett.') }, { id: 'monthly', label: t('Mesi') }]} />
+      {type === 'once' && afterId === null && !eventId && <p className="mt-2 px-1 text-xs text-muted">{t('Nessuna scadenza ripetuta: resta sempre nella stanza e la puoi rifare quando serve.')}</p>}
       {type !== 'once' && (
         <div className="mt-3 flex items-center justify-between rounded-2xl border border-line bg-bg/60 px-4 py-2">
           <span className="font-medium">{t('Ogni {n} {unit}', { n: every, unit })}</span>
