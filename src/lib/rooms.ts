@@ -27,13 +27,12 @@ export function applyCompletion(task: Task, done: string[], at: number, now = at
       if (v != null) roomDone[r] = v
     }
   }
-  const everyRoomDone = all.every((r) => (roomDone ? roomDone[r] != null : true))
   return {
     ...task,
     roomDone,
     lastCompletedAt: Math.max(task.lastCompletedAt ?? 0, at),
     completions: task.completions + 1,
-    archived: task.recurrence.type === 'once' && !isEventDriven(task) && everyRoomDone,
+    archived: false, // anche le azioni su richiesta restano: si possono rifare
     triggeredAt: isEventDriven(task) ? null : task.triggeredAt,
     updatedAt: now,
   }

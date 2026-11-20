@@ -39,7 +39,7 @@ function addMonths(ts: number, months: number): number {
 }
 
 /**
- * Prossima scadenza (ms) oppure null se una tantum archiviata. Con `roomId` è quella di quella stanza;
+ * Prossima scadenza (ms) oppure null se «su richiesta» già fatta. Con `roomId` è quella di quella stanza;
  * senza, per un'azione con più stanze, è la più vicina (la più urgente).
  */
 export function nextDue(task: Task, roomId?: string): number | null {
@@ -161,7 +161,7 @@ export function weekdayShort(d: number): string {
 export function recurrenceLabel(task: Task): string {
   const { type, every, weekdays } = task.recurrence
   switch (type) {
-    case 'once': return t('Una tantum')
+    case 'once': return t('Su richiesta')
     case 'daily': return every === 1 ? t('Ogni giorno') : t('Ogni {n} giorni', { n: every })
     case 'weekly':
       if (weekdays && weekdays.length) {
