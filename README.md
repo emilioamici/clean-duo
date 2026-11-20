@@ -93,9 +93,13 @@ Apri l'app → **Impostazioni → Google Drive → Configura credenziali Google*
 4. Aggiungi i membri (o lascia che ciascuno usi **Aggiungi me**).
 
 ### Membro 2 (si unisce)
-1. Apre l'app → **Impostazioni** → inserisce le stesse credenziali Google (o usa la build con le variabili precompilate) → **Accedi con Google**.
-2. **Unisciti a una casa → Scegli il file condiviso (Picker)** e seleziona `cleanduo-db.json` (tab *Condivisi con me*).
-3. In alternativa, incolla l'**ID** del file.
+1. Il membro 1 apre *Impostazioni → Sincronizzazione*, invita l'email del partner e gli manda il **link d'invito** (pulsante di condivisione accanto al link): ha la forma `https://<utente>.github.io/<repo>/#join=<id del file>`.
+2. Il partner apre il link, preme **Accedi con Google** e poi **Scegli il file e unisciti**: il selettore di Google mostra **solo** il file della casa, un tocco e l'app ottiene il permesso di aprirlo (si fa una volta sola).
+3. Viene aggiunto da solo tra i membri (con il nome del suo account Google, che può cambiare) e la casa si apre.
+
+Senza link: *Accedi con Google → Scegli il database della casa* (selettore con «Condivisi con me») oppure incolla l'ID del file.
+
+> **Su iPhone** il selettore di Google può mostrare «Can't access your Google Account… cookie»: è Safari che blocca i cookie di terze parti. Si risolve accedendo con l'**accesso persistente** (login con pagina intera, vedi `worker/README.md`) oppure consentendo i cookie per il sito in *Impostazioni → Safari*.
 
 > ⚠️ **Perché il Picker?** Con lo scope ristretto `drive.file` un'app può accedere a un file creato da qualcun altro
 > **solo dopo che l'utente lo ha scelto con il Google Picker**. Incollare l'ID funziona solo se quell'account ha già

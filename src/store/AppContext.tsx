@@ -14,6 +14,8 @@ import { t } from '../i18n'
 import { finalizeTimers, finishEarly, startRunning, timerLogId } from '../lib/timers'
 import { triggerDependents, unlinkMissing } from '../lib/deps'
 import { undoCompletion } from '../lib/history'
+import { clearInvite } from '../services/invite'
+import { AVATARS, MEMBER_COLORS } from '../lib/demo'
 import type { GoogleConfig, GoogleUser } from '../services/googleDriveService'
 
 type SyncStatus = 'demo' | 'idle' | 'syncing' | 'offline' | 'auth' | 'error'
@@ -589,17 +591,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const joinHouse: Ctx['joinHouse'] = async (fileIdOrLink, usePicker) => {
     if (!drive.hasValidToken()) await drive.signIn(configRef.current.clientId, true)
     let id: string | null
-    if (usePicker) id = await drive.pickDbFile(configRef.current)
+    // con un ID e il Picker (invito): il selettore mostra solo quel file
+    if (usePicker) id = await drive.pickDbFile(configRef.current, fileIdOrLink ? drive.parseFileId(fileIdOrLink) : undefined)
     else id = fileIdOrLink ? drive.parseFileId(fileIdOrLink) : null
     if (!id) return
     const { meta: rm, db: remote } = await drive.readDb(id)
     const u = user ?? (await drive.getUser().catch(() => null))
     if (u) setUser(u)
-    setDb(remote)
-    setMeta({ mode: 'drive', fileId: id, version: rm.version, dirty: false, lastSyncAt: Date.now() })
+    let joined = remote
+    let dirty = false
     const match = u && remote.members.find((x) => x.email?.toLowerCase() === u.email.toLowerCase())
     if (match) setMeId(match.id)
+    else if (u) {
+      // chi entra e non è ancora tra i membri viene aggiunto con il suo nome Google (poi lo modifica)
+      const now = Date.now()
+      const n = remote.members.length
+      const mid = uid('m')
+      joined = { ...remote, members: [...remote.members, { id: mid, name: u.name.split(' ')[0] || u.email.split('@')[0], email: u.email, avatar: AVATARS[n % AVATARS.length], color: MEMBER_COLORS[n % MEMBER_COLORS.length], updatedAt: now }], lastUpdated: now }
+      dirty = true
+      setMeId(mid)
+    }
+    setDb(joined)
+    setMeta({ mode: 'drive', fileId: id, version: rm.version, dirty, lastSyncAt: Date.now() })
+    clearInvite()
     setStatus('idle')
+    if (dirty) window.setTimeout(() => void runSync(), 300)
     notify(t('Sei entrato in «{name}» 🏠', { name: remote.houseName }))
   }
 
@@ -608,7 +624,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!id) throw new Error(t('Crea prima la casa su Drive.'))
     if (!drive.hasValidToken()) await drive.signIn(configRef.current.clientId, true)
     await drive.shareFile(id, email.trim())
-    notify(t('Invito inviato a {email}', { email: email.trim() }))
+    // il profilo c'è già quando la persona accede: la riconosce dall'email
+    const addr = email.trim()
+    if (!dbRef.current.members.some((m) => m.email?.toLowerCase() === addr.toLowerCase())) {
+      const n = dbRef.current.members.length
+      upsertMember({ name: addr.split('@')[0], email: addr, avatar: AVATARS[n % AVATARS.length], color: MEMBER_COLORS[n % MEMBER_COLORS.length] })
+    }
+    notify(t('Invito inviato a {email}', { email: addr }))
   }
 
   /* ---------- notifiche di questo dispositivo ---------- */

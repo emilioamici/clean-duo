@@ -236,18 +236,24 @@ export function pickerAvailable(cfg: GoogleConfig): boolean {
 }
 
 /** Apre il Picker e restituisce l'ID del file scelto (concede all'app l'accesso drive.file a quel file). */
-export async function pickDbFile(cfg: GoogleConfig): Promise<string | null> {
+export async function pickDbFile(cfg: GoogleConfig, onlyFileId?: string): Promise<string | null> {
   if (!hasValidToken()) throw new AuthError()
   const accessToken = tok!.value
   await loadScript('https://apis.google.com/js/api.js')
   await new Promise<void>((resolve) => window.gapi.load('picker', () => resolve()))
   const g = window.google.picker
-  const shared = new g.DocsView(g.ViewId.DOCS).setMimeTypes('application/json').setOwnedByMe(false).setIncludeFolders(false)
-  const mine = new g.DocsView(g.ViewId.DOCS).setMimeTypes('application/json').setIncludeFolders(false)
+  // con un invito il selettore mostra solo il file dell'invito: un tocco e l'app ottiene l'accesso
+  const views = onlyFileId
+    ? [new g.DocsView(g.ViewId.DOCS).setFileIds(onlyFileId).setIncludeFolders(false)]
+    : [
+        new g.DocsView(g.ViewId.DOCS).setMimeTypes('application/json').setOwnedByMe(false).setIncludeFolders(false),
+        new g.DocsView(g.ViewId.DOCS).setMimeTypes('application/json').setIncludeFolders(false),
+      ]
   return new Promise<string | null>((resolve) => {
-    const picker = new g.PickerBuilder()
-      .addView(shared)
-      .addView(mine)
+    let builder = new g.PickerBuilder()
+    for (const v of views) builder = builder.addView(v)
+    const picker = builder
+      .setLocale(document.documentElement.lang === 'en' ? 'en' : 'it')
       .setOAuthToken(accessToken)
       .setDeveloperKey(cfg.apiKey)
       .setAppId(cfg.appId)

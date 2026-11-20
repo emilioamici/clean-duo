@@ -3,11 +3,12 @@ import { useEffect, useRef, useState } from 'react'
 import * as drive from '../services/googleDriveService'
 import { timeAgo } from '../lib/stats'
 import { hasSession } from '../services/broker'
+import { clearInvite, pendingInvite } from '../services/invite'
 import { t, useLang } from '../i18n'
 import { tb } from '../i18n/rich'
 import { useApp } from '../store/AppContext'
 
-type Phase = 'login' | 'choose' | 'none'
+type Phase = 'login' | 'choose' | 'none' | 'invite'
 const msg = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 /**
@@ -33,11 +34,20 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
   }
 
   const started = useRef(false)
-  const afterLogin = async () => {
-    const found = await app.connect()
+  const invite = pendingInvite()
+  /** Dopo l'accesso: con un invito si prova ad aprire quel file; se l'app non ha ancora il permesso si chiede un tocco sul Picker. */
+  const afterConnect = async (found: drive.DriveMeta[]) => {
+    const inv = pendingInvite()
+    if (inv) {
+      try { await app.joinHouse(inv, false); return } catch (e) {
+        if (!(e instanceof drive.NotFoundError)) throw e
+        setPhase('invite'); return // serve il permesso sul file: un tocco sul Picker
+      }
+    }
     if (found.length === 1) await app.joinHouse(found[0].id, false) // una sola casa: collegamento automatico
     else { setFiles(found); setPhase(found.length > 1 ? 'choose' : 'none') }
   }
+  const afterLogin = async () => { await afterConnect(await app.connect()) }
   // ritorno dal login di Google (pagina intera): la sessione c'è già, si prosegue da soli
   useEffect(() => {
     if (!reconnect && !started.current && (drive.hasValidToken() || hasSession())) { started.current = true; void guard(afterLogin) }
@@ -46,16 +56,10 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
 
   const login = () => guard(async () => {
     if (reconnect) { await app.reconnect(); return }
-    const found = await app.connect()
-    if (found.length === 1) await app.joinHouse(found[0].id, false) // una sola casa: collegamento automatico
-    else { setFiles(found); setPhase(found.length > 1 ? 'choose' : 'none') }
+    await afterConnect(await app.connect())
   })
 
-  const search = () => guard(async () => {
-    const found = await drive.findDbFiles()
-    if (found.length === 1) await app.joinHouse(found[0].id, false)
-    else { setFiles(found); setPhase(found.length > 1 ? 'choose' : 'none') }
-  })
+  const search = () => guard(async () => { await afterConnect(await drive.findDbFiles()) })
 
   return (
     <div className="flex min-h-full flex-col justify-center px-1 py-10">
@@ -73,6 +77,9 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
             <h2 className="text-lg font-bold">{t('Sessione Google scaduta')}</h2>
             <p className="text-sm text-muted">{user?.email ? tb('Per continuare a sincronizzare accedi di nuovo come <b>{email}</b>. I dati della casa sono al sicuro su Drive.', { email: user.email }) : t('Per continuare a sincronizzare accedi di nuovo. I dati della casa sono al sicuro su Drive.')}</p>
           </>
+        )}
+        {phase === 'login' && !reconnect && invite && (
+          <p className="rounded-xl bg-brand/10 p-3 text-sm font-semibold text-brand">{t('Hai un invito per una casa: accedi con Google per entrare.')}</p>
         )}
         {phase === 'login' && !reconnect && (
           <p className="text-sm text-muted">{tb('Accedi con il <b>tuo account Google</b>. Se la tua casa è già su Drive la ritrovo io; altrimenti puoi crearne una nuova.')}</p>
@@ -98,6 +105,18 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
             ) : (
               <button className="glass-btn w-full !text-xs" disabled={busy} onClick={() => app.setDemoSkipped(true)}>{t('Prova senza accedere (demo)')}</button>
             )}
+          </>
+        )}
+
+        {phase === 'invite' && invite && (
+          <>
+            <h2 className="text-lg font-bold">{t('Ti hanno invitato in una casa')}</h2>
+            <p className="text-sm text-muted">{t('Per entrare tocca il pulsante e scegli il file della casa: serve a dare a Clean Duo il permesso di aprirlo. Si fa una volta sola.')}</p>
+            <button className="glass-btn btn-primary w-full !py-3" disabled={busy} onClick={() => void guard(() => app.joinHouse(invite, true))}>
+              {busy ? <Loader2 size={18} className="animate-spin" /> : <Folder size={18} />}{t('Scegli il file e unisciti')}
+            </button>
+            <p className="text-xs text-muted">{t('Se compare «Can’t access your Google Account», in Safari consenti i cookie per questo sito oppure accedi con l’accesso persistente e riprova.')}</p>
+            <button className="glass-btn w-full !text-xs" disabled={busy} onClick={() => { clearInvite(); setPhase('none') }}>{t('Non è il mio invito: crea o cerca un’altra casa')}</button>
           </>
         )}
 

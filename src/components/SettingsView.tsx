@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import * as drive from '../services/googleDriveService'
 import { brokerAvailable } from '../services/broker'
 import { pushConfigured } from '../services/push'
+import { inviteLink } from '../services/invite'
 import { THEME_NAME } from '../lib/theme'
 import { timeAgo } from '../lib/stats'
 import { LANG_NAME, getLangPref, t, useLang } from '../i18n'
@@ -192,7 +193,15 @@ function DriveSection() {
               <input className="field" type="email" inputMode="email" placeholder="partner@gmail.com" value={email} onChange={(e) => setEmail(e.target.value)} autoCapitalize="none" />
               <button className="glass-btn btn-primary !px-3" disabled={busy || !email.includes('@')} aria-label={t('Condividi')} onClick={() => void run(async () => { await app.shareWith(email); setEmail(''); setPerms(await drive.listPermissions(fileId)) }, setBusy, app.notify)}><Share2 size={16} /></button>
             </div>
-            <p className="mt-1.5 px-1 text-xs text-muted">{t('Il partner dovrà poi aprire l’app, accedere con Google e scegliere «Unisciti a una casa».')}</p>
+            <p className="mt-1.5 px-1 text-xs text-muted">{t('Poi manda alla persona questo link: dopo l’accesso con Google le basta un tocco per entrare, senza ID da incollare.')}</p>
+            <div className="mt-2 flex gap-2">
+              <input readOnly className="field !text-xs" value={inviteLink(fileId)} onFocus={(e) => e.currentTarget.select()} aria-label={t('Link d\'invito')} />
+              <button className="glass-btn !px-3" aria-label={t('Copia il link d\'invito')} onClick={() => {
+                const url = inviteLink(fileId)
+                if (navigator.share) void navigator.share({ title: 'Clean Duo', text: t('Ti invito in casa su Clean Duo'), url }).catch(() => undefined)
+                else { void navigator.clipboard?.writeText(url); app.notify(t('Link copiato')) }
+              }}><Share2 size={16} /></button>
+            </div>
             {perms.length > 0 && (
               <ul className="mt-2 space-y-1 px-1 text-xs text-muted">
                 {perms.map((p) => <li key={p.id}>• {p.emailAddress ?? p.displayName ?? t('Link')} — {p.role === 'owner' ? t('proprietario') : p.role === 'writer' ? t('può modificare') : p.role}</li>)}
