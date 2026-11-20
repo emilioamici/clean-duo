@@ -99,3 +99,36 @@ describe('merge', () => {
     expect(m.logs.filter((l) => l.id === 'a1' || l.id === 'b1')).toHaveLength(1)
   })
 })
+
+describe('azioni con durata', () => {
+  it('a fine durata l\'azione si completa all\'ora di fine, con le stelle a chi l\'ha avviata, una sola volta', async () => {
+    const { finalizeTimers, startRunning, isRunning } = await import('./timers')
+    const db = base()
+    const t0 = db.tasks[0]
+    const t1 = { ...t0, durationMin: 45 }
+    const started = startRunning(t1, 'm2', Date.now())
+    expect(started.runningUntil! - Date.now()).toBeGreaterThan(44 * 60_000)
+    expect(isRunning(started)).toBe(true)
+    const running = { ...db, tasks: [started, ...db.tasks.slice(1)] }
+    expect(finalizeTimers(running, started.runningUntil! - 1)).toBe(running) // non ancora
+    const done = finalizeTimers(running, started.runningUntil! + 5_000)
+    const log = done.logs[0]
+    expect(log).toMatchObject({ taskId: t0.id, memberId: 'm2', at: started.runningUntil, timer: true })
+    expect(done.tasks[0].runningUntil).toBeNull()
+    expect(done.tasks[0].lastCompletedAt).toBe(started.runningUntil)
+    expect(finalizeTimers(done, started.runningUntil! + 60_000)).toBe(done) // idempotente
+    // due dispositivi che lo registrano insieme producono lo stesso log: il merge ne tiene uno
+    const other = finalizeTimers(running, started.runningUntil! + 9_000)
+    expect(mergeDb(done, other).logs.filter((l) => l.timer)).toHaveLength(1)
+  })
+
+  it('«finito» arriva a tutti, anche a chi l\'ha avviata; il push dal server (non dal client) evita i doppioni', async () => {
+    const { finalizeTimers, startRunning } = await import('./timers')
+    const prev = base()
+    prev.tasks[0] = startRunning({ ...prev.tasks[0], durationMin: 30 }, 'm1', Date.now())
+    const next = finalizeTimers(prev, prev.tasks[0].runningUntil! + 1)
+    expect(diffNotifications(prev, next, 'm1').map((n) => n.title)).toEqual([expect.stringContaining('è finito')])
+    expect(diffNotifications(prev, next, 'm2').map((n) => n.title)).toEqual([expect.stringContaining('è finito')])
+    expect(pushTargets(prev, next, 'm1')).toEqual([])
+  })
+})

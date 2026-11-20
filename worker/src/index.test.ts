@@ -38,3 +38,29 @@ describe('promemoria programmati', () => {
     expect((await worker.fetch(none, env)).status).toBe(401)
   })
 })
+
+describe('timer di fine durata', () => {
+  const google = (u: string) => (u.includes('/about') ? new Response(JSON.stringify({ user: { emailAddress: 'a@example.com' } })) : new Response('{"id":"x"}'))
+  const call = (env: Env, body: unknown) => worker.fetch(new Request('https://w.example/timer', { method: 'POST', headers: { Origin: 'https://utente.github.io', Authorization: 'Bearer tok', 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), env)
+
+  it('si programma, si annulla e il cron lo consuma una volta sola', async () => {
+    const { env, kv } = makeEnv(google)
+    const at = Date.now() + 3600_000
+    const ok = await call(env, { fileId: 'FILEID12345', id: 'task1-123', at, title: 'Asciugatrice finita', recipients: ['a@example.com', 'b@example.com'] })
+    expect(ok.status).toBe(200)
+    expect(kv.has('m:FILEID12345:task1-123')).toBe(true)
+    await runScheduled(env, at - 1)
+    expect(kv.has('m:FILEID12345:task1-123')).toBe(true) // non ancora
+    await call(env, { fileId: 'FILEID12345', id: 'task1-123', cancel: true })
+    expect(kv.has('m:FILEID12345:task1-123')).toBe(false)
+    await call(env, { fileId: 'FILEID12345', id: 'task2-456', at, title: 'x', recipients: ['a@example.com'] })
+    await runScheduled(env, at + 1)
+    expect(kv.has('m:FILEID12345:task2-456')).toBe(false)
+  })
+
+  it('rifiuta orari oltre le 24 ore e destinatari vuoti', async () => {
+    const { env } = makeEnv(google)
+    expect((await call(env, { fileId: 'FILEID12345', id: 'task1-1', at: Date.now() + 48 * 3600_000, title: 'x', recipients: ['a@example.com'] })).status).toBe(400)
+    expect((await call(env, { fileId: 'FILEID12345', id: 'task1-1', at: Date.now() + 1000, title: 'x', recipients: [] })).status).toBe(400)
+  })
+})

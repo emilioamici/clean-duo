@@ -23,6 +23,8 @@ export interface ChangeEvent {
   /** il membro a cui si riferisce (per «nuovo membro») */
   subject?: string
   taskId?: string
+  /** completata da sola a fine durata: il server la notifica a tutti, anche a chi l'ha avviata */
+  timer?: boolean
   title: string
   body: string
 }
@@ -47,8 +49,8 @@ export function changeEvents(prev: AppDatabase, next: AppDatabase): ChangeEvent[
   if (logs.length <= MASS_LIMIT) {
     for (const l of logs) {
       out.push({
-        kind: 'done', key: `done:${l.id}`, actor: l.memberId, taskId: l.taskId,
-        title: t('{who} ha completato «{task}»', { who: who(l.memberId), task: l.taskName }),
+        kind: 'done', key: `done:${l.id}`, actor: l.memberId, taskId: l.taskId, timer: l.timer,
+        title: l.timer ? t('Il task «{task}» è finito', { task: l.taskName }) : t('{who} ha completato «{task}»', { who: who(l.memberId), task: l.taskName }),
         body: [room(l.roomId), `+${l.stars} ⭐`].filter(Boolean).join(' · '),
       })
     }
@@ -90,7 +92,7 @@ function group<T extends { kind: string }>(items: T[], make: (kind: string, list
 /** Notifiche per il membro `me`: eventi fatti da altri che gli interessano (mai le sue modifiche). */
 export function diffNotifications(prev: AppDatabase, next: AppDatabase, me: string, at = Date.now()): Notif[] {
   const myPrefs = notifyPrefs(next.members.find((m) => m.id === me))
-  const events = changeEvents(prev, next).filter((e) => e.actor !== me && e.subject !== me && myPrefs[e.kind])
+  const events = changeEvents(prev, next).filter((e) => (e.actor !== me || e.timer) && e.subject !== me && myPrefs[e.kind])
   const notifs: Notif[] = events.map((e) => ({ id: e.key, kind: e.kind, title: e.title, body: e.body, at, read: false, taskId: e.taskId }))
   return group(notifs, (kind, list) => ({
     id: `${kind}:group:${list.map((n) => n.id).sort()[0]}:${list.length}`, kind: kind as NotifKind, at, read: false,
@@ -108,6 +110,7 @@ export interface PushTarget { event: ChangeEvent; email: string; memberId: strin
 export function pushTargets(prev: AppDatabase, next: AppDatabase, me: string): PushTarget[] {
   const out: PushTarget[] = []
   for (const e of changeEvents(prev, next)) {
+    if (e.timer) continue // il fine-durata lo invia il server a tutti all'ora giusta (vedi scheduleTimer)
     if (e.actor !== null && e.actor !== me) continue // l'ha fatto un altro: ci pensa il suo dispositivo
     for (const m of next.members) {
       if (m.id === me || m.id === e.subject || !m.email) continue

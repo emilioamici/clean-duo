@@ -90,3 +90,15 @@ export interface ScheduledReminder { at: number; title: string; body: string; ta
 export async function scheduleReminders(fileId: string, token: string, items: ScheduledReminder[]): Promise<void> {
   await post('/schedule', token, { fileId, items })
 }
+
+export interface TimerPush { id: string; at: number; title: string; body: string; tag?: string; recipients: string[] }
+
+/** Chiede al server di notificare tutti i destinatari (anche chi la programma) quando scade la durata di un'azione. */
+export async function scheduleTimer(fileId: string, token: string, m: TimerPush): Promise<void> {
+  await post('/timer', token, { fileId, ...m })
+}
+
+/** Annulla un timer programmato. */
+export async function cancelTimer(fileId: string, token: string, id: string): Promise<void> {
+  await post('/timer', token, { fileId, id, cancel: true })
+}

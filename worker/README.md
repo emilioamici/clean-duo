@@ -11,6 +11,7 @@ Entrambe sono **facoltative**: senza server l'app funziona (notifiche solo con l
 - Ogni dispositivo che attiva le notifiche si **iscrive** al server (indirizzo del servizio di push del browser + chiavi di cifratura).
 - Chi fa una modifica **dice al server a chi inviare la notifica** (gli altri membri con email e con quel tipo di avviso attivo). La notifica parte solo dopo che i dati sono arrivati su Drive. Il messaggio è cifrato fino al dispositivo (RFC 8291); il testo passa dal server (nome dell'azione e di chi l'ha fatta).
 - **Promemoria**: il dispositivo comunica *quando* inviarsi cosa (max 8 voci, le sostituisce a ogni sincronizzazione); un cron ogni 5 minuti invia quelli scaduti. Il server non conosce il database.
+- **Azioni con durata**: chi avvia l'azione programma sul server la notifica di fine (`/timer`, max 24 ore) per tutti i membri con email; il cron la invia entro 5 minuti dalla scadenza. Se l'azione viene annullata o eliminata, il timer si cancella. Con l'app aperta la notifica è immediata e il server la deduplica con lo stesso `tag`.
 - Il server **non legge mai Drive** per le notifiche. A ogni richiesta controlla il token Google di chi scrive: deve essere valido e avere accesso al file del database. Con l'accesso persistente conserva un token di rinnovo cifrato (vedi sotto).
 
 ## Cosa serve

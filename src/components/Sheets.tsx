@@ -7,7 +7,8 @@ import { weekdayShort } from '../lib/clean'
 import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
 import { RoomIcon } from './icons'
-import { Avatar, Segmented, Sheet, Stars } from './ui'
+import { DURATION_PRESETS, MAX_DURATION_MIN, durationLabel } from '../lib/timers'
+import { Avatar, Segmented, Sheet, Stars, Toggle } from './ui'
 
 function DeleteButton({ onConfirm, label }: { onConfirm: () => void; label: string }) {
   const [armed, setArmed] = useState(false)
@@ -31,6 +32,7 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
   const [every, setEvery] = useState(existing?.recurrence.every ?? 1)
   const [weekdays, setWeekdays] = useState<number[]>(existing?.recurrence.weekdays ?? [])
   const [mode, setMode] = useState<Assignment['mode']>(existing?.assignment.mode ?? 'anyone')
+  const [duration, setDuration] = useState<number | null>(existing?.durationMin ?? null)
   const [picked, setPicked] = useState<string[]>(
     existing?.assignment.mode === 'member' ? [existing.assignment.memberId]
       : existing?.assignment.mode === 'rotation' ? existing.assignment.memberIds : [],
@@ -47,6 +49,7 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
     upsertTask({
       id: existing?.id, roomId: room, name: name.trim(), stars, assignment,
       recurrence: { type, every: type === 'once' ? 1 : every, ...(type === 'weekly' && weekdays.length ? { weekdays } : {}) },
+      durationMin: duration ? Math.min(MAX_DURATION_MIN, Math.max(1, Math.round(duration))) : undefined,
     })
     onClose()
   }
@@ -88,6 +91,23 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
           </div>
         </>
       )}
+
+      <label className="label">{t('Durata')}</label>
+      <div className="rounded-2xl border border-line bg-bg/60 p-3">
+        <Toggle checked={duration !== null} onChange={(v) => setDuration(v ? 60 : null)} label={t('Azione con durata')} hint={t('Il tap la avvia: resta «in corso» e si completa da sola alla fine, avvisando tutti.')} />
+        {duration !== null && (
+          <>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {DURATION_PRESETS.map((m) => <button key={m} type="button" className={`chip ${duration === m ? 'chip-active' : ''}`} onClick={() => setDuration(m)}>{durationLabel(m)}</button>)}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <label htmlFor="duration-min" className="text-sm font-medium">{t('Minuti')}</label>
+              <input id="duration-min" type="number" inputMode="numeric" min={1} max={MAX_DURATION_MIN} className="field !w-28 text-right" value={duration}
+                onChange={(e) => setDuration(e.target.value === '' ? 1 : Math.min(MAX_DURATION_MIN, Math.max(1, Number(e.target.value))))} />
+            </div>
+          </>
+        )}
+      </div>
 
       <label className="label">{t('Assegnazione')}</label>
       <Segmented<Assignment['mode']> value={mode} onChange={(m) => { setMode(m); setPicked([]) }} options={[{ id: 'anyone', label: t('Libera') }, { id: 'member', label: t('Membro') }, { id: 'rotation', label: t('Rotazione') }]} />

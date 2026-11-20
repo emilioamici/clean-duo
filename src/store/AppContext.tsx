@@ -6,11 +6,12 @@ import { uid } from '../lib/clean'
 import { mergeDb, sameContent } from '../lib/merge'
 import * as drive from '../services/googleDriveService'
 import { hasSession } from '../services/broker'
-import { PushHttpError, currentSubscription, disablePush, enablePush, pushConfigured, pushSupported, refreshPush, scheduleReminders, sendPush } from '../services/push'
+import { PushHttpError, cancelTimer, currentSubscription, disablePush, enablePush, pushConfigured, pushSupported, refreshPush, scheduleReminders, scheduleTimer, sendPush } from '../services/push'
 import { enqueue, flushQueue, type QueuedPush, type SendResult } from '../services/pushQueue'
 import { diffNotifications, mergeNotifications, pushTargets, type Notif } from '../lib/notifications'
 import { DEFAULT_REMINDER_TIME, buildReminders, dueNow, reminderText, validTime } from '../lib/reminders'
 import { t } from '../i18n'
+import { finalizeTimers, startRunning, timerLogId } from '../lib/timers'
 import type { GoogleConfig, GoogleUser } from '../services/googleDriveService'
 
 type SyncStatus = 'demo' | 'idle' | 'syncing' | 'offline' | 'auth' | 'error'
@@ -100,9 +101,13 @@ interface Ctx {
   // dati
   upsertRoom: (r: Omit<Room, 'id' | 'updatedAt'> & { id?: string }) => void
   deleteRoom: (id: string) => void
-  upsertTask: (t: Omit<Task, 'id' | 'updatedAt' | 'createdAt' | 'lastCompletedAt' | 'completions' | 'archived'> & { id?: string }) => void
+  upsertTask: (t: Omit<Task, 'id' | 'updatedAt' | 'createdAt' | 'lastCompletedAt' | 'completions' | 'archived' | 'runningUntil' | 'runningBy'> & { id?: string }) => void
   deleteTask: (id: string) => void
   completeTask: (taskId: string, memberId: string) => number
+  /** Avvia l'azione con durata: resta «in corso» e si completa da sola alla fine. Ritorna l'ora di fine (ms). */
+  startTimer: (taskId: string, memberId: string) => number | null
+  /** Annulla un'azione in corso senza completarla. */
+  cancelTimer: (taskId: string) => void
   upsertMember: (m: Omit<Member, 'id' | 'updatedAt'> & { id?: string }) => string
   deleteMember: (id: string) => void
   updateSettings: (s: Partial<Settings> & { houseName?: string }) => void
@@ -385,6 +390,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [setDb, setMeta, scheduleSync])
 
+  // azioni con durata: alla scadenza si completano da sole (chi ha l'app aperta; con l'app chiusa lo fa il primo che la apre) e si avvisano tutti
+  useEffect(() => {
+    const tick = () => {
+      const now = Date.now()
+      if (!dbRef.current.tasks.some((x) => x.runningUntil && x.runningUntil <= now)) return
+      const prev = dbRef.current
+      mutate((d) => finalizeTimers(d, now))
+      const next = dbRef.current
+      if (next === prev) return
+      if (metaRef.current.mode === 'demo') {
+        const done = prev.tasks.filter((x) => x.runningUntil && x.runningUntil <= now)
+        if (done[0]) notify(t('Il task «{task}» è finito', { task: done[0].name }))
+      } else onRemoteRef.current(prev, next)
+    }
+    tick()
+    const iv = window.setInterval(tick, 10_000)
+    const onVis = () => { if (document.visibilityState === 'visible') tick() }
+    document.addEventListener('visibilitychange', onVis)
+    return () => { window.clearInterval(iv); document.removeEventListener('visibilitychange', onVis) }
+  }, [mutate, notify])
+
+  // la notifica di fine la invia il server all'ora giusta, anche con l'app chiusa: qui si programma (e si riprova se era offline)
+  const scheduledTimers = useRef(new Set<string>())
+  const runningSig = db.tasks.filter((x) => x.runningUntil).map((x) => `${x.id}-${x.runningUntil}`).join('|')
+  useEffect(() => {
+    const tk = drive.currentToken()
+    const fid = meta.fileId
+    if (meta.mode !== 'drive' || !fid || !tk || !pushConfigured() || status !== 'idle') return
+    const cur = dbRef.current
+    const emails = cur.members.map((m) => m.email).filter((e): e is string => !!e)
+    if (emails.length === 0) return
+    for (const x of cur.tasks) {
+      if (!x.runningUntil) continue
+      const id = `${x.id}-${x.runningUntil}`
+      if (scheduledTimers.current.has(id)) continue
+      scheduledTimers.current.add(id)
+      const room = cur.rooms.find((r) => r.id === x.roomId)?.name ?? ''
+      void scheduleTimer(fid, tk, {
+        id, at: x.runningUntil, recipients: emails, tag: `done:${timerLogId(x.id, x.runningUntil)}`,
+        title: t('Il task «{task}» è finito', { task: x.name }), body: [room, `+${x.stars} ⭐`].filter(Boolean).join(' · '),
+      }).catch(() => scheduledTimers.current.delete(id))
+    }
+  }, [runningSig, meta.mode, meta.fileId, status])
+
   const tomb = (d: AppDatabase, ids: string[]) => ({ ...d.tombstones, ...Object.fromEntries(ids.map((i) => [i, Date.now()])) })
 
   const upsertRoom: Ctx['upsertRoom'] = (r) => mutate((d) => {
@@ -405,7 +454,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ...d, tasks: [...d.tasks, task] }
   })
 
-  const deleteTask: Ctx['deleteTask'] = (id) => mutate((d) => ({ ...d, tasks: d.tasks.filter((t) => t.id !== id), tombstones: tomb(d, [id]) }))
+  const deleteTask: Ctx['deleteTask'] = (id) => {
+    const running = dbRef.current.tasks.find((x) => x.id === id)?.runningUntil
+    if (running) cancelServerTimer(id, running)
+    mutate((d) => ({ ...d, tasks: d.tasks.filter((x) => x.id !== id), tombstones: tomb(d, [id]) }))
+  }
+
+  /** Il server non deve più notificare la fine di un timer annullato o eliminato. */
+  const cancelServerTimer = (taskId: string, until: number) => {
+    const tk = drive.currentToken()
+    const fid = metaRef.current.fileId
+    if (tk && fid && pushConfigured()) void cancelTimer(fid, tk, `${taskId}-${until}`).catch(() => undefined)
+  }
+
+  const startTimer: Ctx['startTimer'] = (taskId, memberId) => {
+    const task = dbRef.current.tasks.find((x) => x.id === taskId)
+    if (!task?.durationMin || task.runningUntil) return null
+    const started = startRunning(task, memberId)
+    mutate((d) => ({ ...d, tasks: d.tasks.map((x) => (x.id === taskId ? started : x)) }))
+    return started.runningUntil ?? null
+  }
+
+  const cancelTimerFn: Ctx['cancelTimer'] = (taskId) => {
+    const until = dbRef.current.tasks.find((x) => x.id === taskId)?.runningUntil
+    if (!until) return
+    cancelServerTimer(taskId, until)
+    mutate((d) => ({ ...d, tasks: d.tasks.map((x) => (x.id === taskId ? { ...x, runningUntil: null, runningBy: undefined, updatedAt: Date.now() } : x)) }))
+  }
 
   const completeTask: Ctx['completeTask'] = (taskId, memberId) => {
     const task = dbRef.current.tasks.find((t) => t.id === taskId)
@@ -575,7 +650,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, config, setConfig, theme, setTheme, meId, me, setMeId, toast, notify,
     persistent, prefs, setPrefs, notifications, unread, markRead, markAllRead, clearNotifications, toastNotif, dismissToastNotif, centerOpen, setCenterOpen,
     enableNotifications, disableNotifications, sendTestPush,
-    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, upsertMember, deleteMember, updateSettings,
+    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, startTimer, cancelTimer: cancelTimerFn, upsertMember, deleteMember, updateSettings,
     demoSkipped, setDemoSkipped, offlineSkipped, setOfflineSkipped,
     syncNow, connect, reconnect, createHouse, joinHouse, shareWith, disconnect, resetDemo,
   }

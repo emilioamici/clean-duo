@@ -3,6 +3,7 @@ import { Star } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { nextDue, urgencyOf } from '../lib/clean'
 import { starsSince, weekStart } from '../lib/stats'
+import { isRunning } from '../lib/timers'
 import { locale, t } from '../i18n'
 import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
@@ -29,9 +30,9 @@ export function TodayView() {
       .filter((x) => room === 'all' || x.roomId === room)
       .filter((x) => {
         const u = urgencyOf(x)
-        return filter === 'all' || (filter === 'todo' ? u === 'overdue' || u === 'today' : u === 'soon' || u === 'later')
+        return filter === 'all' || (filter === 'todo' ? u === 'overdue' || u === 'today' || isRunning(x) : (u === 'soon' || u === 'later') && !isRunning(x))
       })
-      .sort((a, b) => (nextDue(a) ?? 0) - (nextDue(b) ?? 0) || b.stars - a.stars)
+      .sort((a, b) => Number(isRunning(b)) - Number(isRunning(a)) || (nextDue(a) ?? 0) - (nextDue(b) ?? 0) || b.stars - a.stars)
   }, [active, filter, room])
 
   const myStars = me ? starsSince(db.logs, weekStart())[me.id] ?? 0 : 0

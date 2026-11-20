@@ -1,5 +1,7 @@
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
 import type { TabId } from '../types'
+import { t } from '../i18n'
+import { timeOfDay } from '../lib/timers'
 import { useApp } from './AppContext'
 
 export type TaskSheetState = { id?: string; roomId?: string } | null
@@ -46,6 +48,17 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const openRoom = (id: string | null) => { setRoomId(id); if (id) setTabState('rooms') }
 
   const doComplete = useCallback((taskId: string, memberId: string, origin?: { x: number; y: number }) => {
+    const task = app.db.tasks.find((x) => x.id === taskId)
+    if (task?.durationMin) {
+      // azione con durata: il tap la avvia; si completa da sola alla fine
+      if (task.runningUntil) return
+      const until = app.startTimer(taskId, memberId)
+      if (until) {
+        try { navigator.vibrate?.(30) } catch { /* non supportato (iOS) */ }
+        app.notify(t('«{task}» in corso: finisce alle {time}', { task: task.name, time: timeOfDay(until) }))
+      }
+      return
+    }
     const stars = app.completeTask(taskId, memberId)
     if (!stars) return
     try { navigator.vibrate?.([18, 40, 24]) } catch { /* non supportato (iOS) */ }

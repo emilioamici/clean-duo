@@ -181,11 +181,61 @@ async function schedule(env: Env, req: Request): Promise<unknown> {
   return { ok: true, scheduled: items.length }
 }
 
+
+interface TimerItem { at: number; title: string; body: string; tag?: string; recipients: string[] }
+const tkey = (fileId: string, id: string) => `m:${fileId}:${id}`
+const validTimerId = (s: unknown): s is string => typeof s === 'string' && /^[\w-]{3,80}$/.test(s)
+
+/**
+ * Timer di un'azione con durata: il dispositivo che la avvia dice quando e a chi inviare la notifica di fine
+ * (anche con l'app chiusa). Max 24 ore, max 20 destinatari. `cancel: true` lo annulla.
+ */
+async function timer(env: Env, req: Request): Promise<unknown> {
+  const body = await readJson(req)
+  if (!validFileId(body.fileId)) throw new HttpError(400, 'File non valido')
+  if (!validTimerId(body.id)) throw new HttpError(400, 'Timer non valido')
+  await authenticate(env, req, body.fileId)
+  if (body.cancel === true) { await env.SUBS.delete(tkey(body.fileId, body.id)); return { ok: true } }
+  const now = Date.now()
+  const at = typeof body.at === 'number' ? Math.floor(body.at) : 0
+  const recipients = Array.isArray(body.recipients) ? [...new Set(body.recipients.filter(validEmail).map((e) => e.toLowerCase()))] : []
+  const title = typeof body.title === 'string' ? body.title.slice(0, 120) : ''
+  if (!title || !recipients.length || recipients.length > MAX_RECIPIENTS) throw new HttpError(400, 'Richiesta non valida')
+  if (at < now - 60_000 || at > now + 25 * 3600 * 1000) throw new HttpError(400, 'Orario non valido')
+  const item: TimerItem = { at, title, body: typeof body.body === 'string' ? body.body.slice(0, 300) : '', tag: typeof body.tag === 'string' ? body.tag.slice(0, 100) : undefined, recipients }
+  await env.SUBS.put(tkey(body.fileId, body.id), JSON.stringify(item), { expirationTtl: 27 * 3600 })
+  return { ok: true }
+}
+
+/** Cron: invia le notifiche di fine durata arrivate a scadenza. */
+async function runTimers(env: Env, now: number, vapid: VapidKeys): Promise<number> {
+  const { keys } = await env.SUBS.list({ prefix: 'm:', limit: 1000 })
+  let sent = 0
+  for (const { name } of keys) {
+    const [, fileId] = name.split(':')
+    let item: TimerItem | null = null
+    try { item = JSON.parse((await env.SUBS.get(name)) ?? 'null') as TimerItem | null } catch { item = null }
+    if (!item) { await env.SUBS.delete(name); continue }
+    if (item.at > now) continue
+    await env.SUBS.delete(name) // prima di inviare: se il cron si sovrappone non si duplica
+    for (const email of item.recipients) {
+      const list = await loadSubs(env, fileId, email)
+      const keep: StoredSub[] = []
+      for (const s of list) {
+        const r = await sendWebPush(s, { title: item.title, body: item.body, tag: item.tag }, vapid)
+        if (r.status >= 200 && r.status < 300) { sent++; keep.push(s) } else if (!r.gone) keep.push(s)
+      }
+      if (keep.length !== list.length) await saveSubs(env, fileId, email, keep)
+    }
+  }
+  return sent
+}
+
 /** Cron: invia i promemoria arrivati a scadenza. */
 export async function runScheduled(env: Env, now = Date.now()): Promise<{ sent: number }> {
   const vapid: VapidKeys = { publicKey: env.VAPID_PUBLIC_KEY, privateKey: env.VAPID_PRIVATE_KEY, subject: env.VAPID_SUBJECT || 'https://example.invalid/' }
   const { keys } = await env.SUBS.list({ prefix: 'r:', limit: 1000 })
-  let sent = 0
+  let sent = await runTimers(env, now, vapid)
   for (const { name } of keys) {
     const [, fileId, email] = name.split(':')
     let items: ScheduledItem[] = []
@@ -225,6 +275,7 @@ export default {
       if (pathname === '/unsubscribe') return json(200, await unsubscribe(env, req))
       if (pathname === '/notify') return json(200, await notify(env, req))
       if (pathname === '/schedule') return json(200, await schedule(env, req))
+      if (pathname === '/timer') return json(200, await timer(env, req))
       if (pathname === '/auth/refresh') { const r = await authRefresh(env, req); return json(r.status, r.body) }
       if (pathname === '/auth/logout') { const r = await authLogout(env, req); return json(r.status, r.body) }
       return json(404, { error: 'Non trovato' })
