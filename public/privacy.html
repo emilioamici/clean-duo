@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clean Duo · Informativa sulla privacy</title>
+<style>
+  body { font: 16px/1.6 system-ui, sans-serif; max-width: 42rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; color: #43322a; background: #fff7ee; }
+  h1 { font-size: 1.6rem } h2 { font-size: 1.15rem; margin-top: 2rem }
+  a { color: #b0520f }
+  @media (prefers-color-scheme: dark) { body { color: #eceef2; background: #16181d } a { color: #e6bb78 } }
+</style>
+</head>
+<body>
+<h1>Clean Duo · Informativa sulla privacy</h1>
+<p>Clean Duo è un'applicazione web personale per gestire le faccende di casa in modo condiviso, a punti. Questa pagina spiega quali dati usa e dove restano.</p>
+
+<h2>Dove sono i tuoi dati</h2>
+<p>Le stanze, le azioni, i punteggi, lo storico e i profili dei membri della casa sono salvati in un file JSON (<code>cleanduo-db.json</code>) nel <strong>tuo Google Drive</strong> (o in quello di chi ha creato la casa, condiviso con i membri invitati). Una copia di lavoro resta nel browser del tuo dispositivo. L'applicazione non ha un database proprio e il codice pubblico non contiene dati personali.</p>
+
+<h2>Accesso a Google</h2>
+<p>L'accesso avviene con il tuo account Google. L'applicazione chiede il solo permesso <code>drive.file</code>: vede esclusivamente il file che ha creato o che scegli tu con il selettore di Google, mai il resto del tuo Drive. Lo usa per leggere e scrivere il file dei dati e per condividerlo con i membri della casa. Legge il tuo indirizzo email e il tuo nome solo per riconoscerti tra i membri.</p>
+
+<h2>Server di supporto (facoltativo)</h2>
+<p>Se attivi le notifiche push o l'accesso persistente, un piccolo servizio su Cloudflare Workers gestito da chi ha installato l'applicazione conserva: l'iscrizione alle notifiche del tuo dispositivo, i promemoria programmati (testo e orario) e, per l'accesso persistente, un token di rinnovo di Google <strong>cifrato</strong>. Il testo delle notifiche (per esempio il nome di un'azione) transita dal servizio. Il servizio non legge il file dei dati su Drive.</p>
+
+<h2>Condivisione e uso dei dati</h2>
+<p>I dati non sono venduti, ceduti a terzi né usati per pubblicità o profilazione. Sono visibili solo a te e ai membri della casa che inviti. L'uso delle informazioni ricevute dalle API di Google rispetta la <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, inclusi i requisiti di uso limitato.</p>
+
+<h2>Cancellazione</h2>
+<p>Puoi eliminare i dati cancellando il file da Google Drive e svuotando i dati del sito dal browser. Puoi revocare l'accesso in qualsiasi momento da <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</p>
+
+<p><a href="./">Torna all'app</a></p>
+</body>
+</html>

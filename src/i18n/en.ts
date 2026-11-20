@@ -317,4 +317,5 @@ export const EN: Record<string, string> = {
   "Azione con durata": "Task with a duration",
   "Il tap la avvia: resta «in corso» e si completa da sola alla fine, avvisando tutti.": "Tapping starts it: it stays “running” and completes by itself at the end, notifying everyone.",
   "Minuti": "Minutes",
+  "Privacy": "Privacy",
 }
