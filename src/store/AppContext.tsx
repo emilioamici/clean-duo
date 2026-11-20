@@ -16,7 +16,7 @@ import { finalizeTimers, finishEarly, startRunning, timerLogId } from '../lib/ti
 import { triggerDependents, unlinkMissing } from '../lib/deps'
 import { applyCompletion, removeRoom, setRooms, taskRooms } from '../lib/rooms'
 import { undoCompletion } from '../lib/history'
-import { clearInvite } from '../services/invite'
+import { clearInvite, inviteLink } from '../services/invite'
 import { AVATARS, MEMBER_COLORS } from '../lib/demo'
 import type { GoogleConfig, GoogleUser } from '../services/googleDriveService'
 
@@ -135,7 +135,8 @@ interface Ctx {
   reconnect: () => Promise<void>
   createHouse: (houseName: string, fromCurrent: boolean, memberName?: string) => Promise<void>
   joinHouse: (fileIdOrLink: string | null, usePicker: boolean) => Promise<void>
-  shareWith: (email: string) => Promise<void>
+  /** Invita un account Google: accesso al database su Drive + email con il link d'invito; aggiunge il membro. */
+  shareWith: (email: string, name?: string) => Promise<void>
   disconnect: () => void
   resetDemo: () => void
   /** L'utente ha scelto di provare l'app in demo senza accedere (pagina iniziale superata). */
@@ -564,7 +565,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return id
   }
 
-  const deleteMember: Ctx['deleteMember'] = (id) => mutate((d) => ({
+  const deleteMember: Ctx['deleteMember'] = (id) => {
+    // chi viene tolto perde anche l'accesso al file su Drive (ci riesce solo il proprietario: per gli altri è un tentativo a vuoto)
+    const gone = dbRef.current.members.find((m) => m.id === id)
+    const fid = metaRef.current.fileId
+    if (gone?.email && fid && metaRef.current.mode === 'drive' && drive.hasValidToken() && gone.email.toLowerCase() !== user?.email.toLowerCase()) {
+      void drive.removeShare(fid, gone.email).catch(() => undefined)
+    }
+    removeMemberLocal(id)
+  }
+  const removeMemberLocal = (id: string) => mutate((d) => ({
     ...d,
     members: d.members.filter((m) => m.id !== id),
     tasks: d.tasks.map((t) => {
@@ -651,16 +661,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notify(t('Sei entrato in «{name}» 🏠', { name: remote.houseName }))
   }
 
-  const shareWith: Ctx['shareWith'] = async (email) => {
+  const shareWith: Ctx['shareWith'] = async (email, name) => {
     const id = metaRef.current.fileId
     if (!id) throw new Error(t('Crea prima la casa su Drive.'))
     if (!drive.hasValidToken()) await drive.signIn(configRef.current.clientId, true)
-    await drive.shareFile(id, email.trim())
-    // il profilo c'è già quando la persona accede: la riconosce dall'email
     const addr = email.trim()
+    // nell'email di Drive c'è il link dell'app: chi lo apre e accede con Google entra in casa con un tocco
+    await drive.shareFile(id, addr, t('Ti invito nella casa «{name}» su Clean Duo. Apri questo link e accedi con questo account Google: il database ti verrà collegato in automatico. {link}', { name: dbRef.current.houseName, link: inviteLink(id) }))
+    // il profilo c'è già quando la persona accede: la riconosce dall'email
     if (!dbRef.current.members.some((m) => m.email?.toLowerCase() === addr.toLowerCase())) {
       const n = dbRef.current.members.length
-      upsertMember({ name: addr.split('@')[0], email: addr, avatar: AVATARS[n % AVATARS.length], color: MEMBER_COLORS[n % MEMBER_COLORS.length] })
+      upsertMember({ name: name?.trim() || addr.split('@')[0], email: addr, avatar: AVATARS[n % AVATARS.length], color: MEMBER_COLORS[n % MEMBER_COLORS.length] })
     }
     notify(t('Invito inviato a {email}', { email: addr }))
   }

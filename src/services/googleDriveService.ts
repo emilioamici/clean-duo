@@ -218,11 +218,20 @@ export async function writeDb(fileId: string, db: AppDatabase, expectedVersion: 
 }
 
 /* ---------- condivisione ---------- */
-export async function shareFile(fileId: string, email: string): Promise<void> {
-  await api(`/files/${encodeURIComponent(fileId)}/permissions?sendNotificationEmail=true&fields=id`, {
+export async function shareFile(fileId: string, email: string, message?: string): Promise<void> {
+  const msg = message ? `&emailMessage=${encodeURIComponent(message)}` : ''
+  await api(`/files/${encodeURIComponent(fileId)}/permissions?sendNotificationEmail=true${msg}&fields=id`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'user', role: 'writer', emailAddress: email }),
   })
+}
+
+/** Toglie l'accesso al file a un account (non fa nulla se non ne aveva; il proprietario non si può togliere). */
+export async function removeShare(fileId: string, email: string): Promise<boolean> {
+  const perms = await listPermissions(fileId)
+  const hit = perms.filter((p) => p.emailAddress?.toLowerCase() === email.toLowerCase() && p.role !== 'owner')
+  for (const p of hit) await api(`/files/${encodeURIComponent(fileId)}/permissions/${encodeURIComponent(p.id)}`, { method: 'DELETE' })
+  return hit.length > 0
 }
 
 export async function listPermissions(fileId: string): Promise<DrivePermission[]> {
