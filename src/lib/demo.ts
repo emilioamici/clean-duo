@@ -51,7 +51,7 @@ export function createDemoDb(): AppDatabase {
       mk('t1', 'r1', t('Lavare i piatti'), 1, { type: 'daily', every: 1 }, 1),
       mk('t2', 'r1', t('Svuotare la lavastoviglie'), 1, { type: 'daily', every: 2 }, 1, { mode: 'rotation', memberIds: ['m1', 'm2'] }),
       mk('t3', 'r1', t('Pulire il piano cottura'), 2, { type: 'weekly', every: 1 }, 4),
-      mk('t4', 'r2', t('Pulire il bagno a fondo'), 5, { type: 'weekly', every: 1 }, 9, { mode: 'member', memberId: 'm2' }),
+      { ...mk('t4', 'r2', t('Pulire il bagno a fondo'), 5, { type: 'weekly', every: 1 }, 9, { mode: 'member', memberId: 'm2' }), notes: t('Sgrassatore su lavandino e doccia, lascia agire 5 minuti, poi risciacqua.') },
       mk('t5', 'r3', t('Passare l’aspirapolvere'), 3, { type: 'weekly', every: 1, weekdays: [1, 4] }, 3),
       mk('t6', 'r3', t('Spolverare i mobili'), 2, { type: 'weekly', every: 2 }, 6),
       mk('t7', 'r4', t('Cambiare le lenzuola'), 4, { type: 'weekly', every: 2 }, 5),
@@ -59,6 +59,8 @@ export function createDemoDb(): AppDatabase {
       mk('t9', 'r5', t('Annaffiare le piante'), 2, { type: 'daily', every: 3 }, 2),
       mk('t10', 'r5', t('Tagliare l’erba'), 4, { type: 'monthly', every: 1 }, 20),
       mk('t11', 'r2', t('Cambiare l’asciugamano'), 1, { type: 'weekly', every: 1 }, 2),
+      // un'azione in più stanze: completata dalla pagina Oggi vale per tutte, dalla singola stanza solo per quella
+      { ...mk('t13', 'r3', t('Pulire i vetri'), 3, { type: 'weekly', every: 2 }, 12), roomIds: ['r3', 'r4', 'r1'], notes: t('Detergente per vetri e panno in microfibra. Meglio con il cielo coperto.') },
       mk('t12', 'r3', t('Montare la libreria nuova'), 5, { type: 'once', every: 1 }, null),
     ],
     logs,

@@ -13,6 +13,7 @@ import { DEFAULT_REMINDER_TIME, buildReminders, dueNow, reminderText, validTime 
 import { t } from '../i18n'
 import { finalizeTimers, finishEarly, startRunning, timerLogId } from '../lib/timers'
 import { triggerDependents, unlinkMissing } from '../lib/deps'
+import { applyCompletion, removeRoom, setRooms, taskRooms } from '../lib/rooms'
 import { undoCompletion } from '../lib/history'
 import { clearInvite } from '../services/invite'
 import { AVATARS, MEMBER_COLORS } from '../lib/demo'
@@ -107,11 +108,12 @@ interface Ctx {
   deleteRoom: (id: string) => void
   upsertTask: (t: Omit<Task, 'id' | 'updatedAt' | 'createdAt' | 'lastCompletedAt' | 'completions' | 'archived' | 'runningUntil' | 'runningBy' | 'triggeredAt'> & { id?: string }) => void
   deleteTask: (id: string) => void
-  completeTask: (taskId: string, memberId: string) => number
+  /** Completa un'azione. Senza `roomIds` per tutte le sue stanze (completamento rapido); con `roomIds` solo per quelle. Le stelle sono sempre quelle dell'azione, una volta sola. */
+  completeTask: (taskId: string, memberId: string, roomIds?: string[]) => number
   /** Annulla un completamento dalla cronologia: le stelle si tolgono e l'azione torna da fare. */
   deleteLog: (logId: string) => void
   /** Avvia l'azione con durata: resta «in corso» e si completa da sola alla fine. Ritorna l'ora di fine (ms). */
-  startTimer: (taskId: string, memberId: string) => number | null
+  startTimer: (taskId: string, memberId: string, roomIds?: string[]) => number | null
   /** Annulla un'azione in corso senza completarla. */
   cancelTimer: (taskId: string) => void
   /** «Completa ora»: finisce subito un'azione in corso. Ritorna le stelle assegnate. */
@@ -434,7 +436,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const id = `${x.id}-${x.runningUntil}`
       if (scheduledTimers.current.has(id)) continue
       scheduledTimers.current.add(id)
-      const room = cur.rooms.find((r) => r.id === x.roomId)?.name ?? ''
+      const room = (x.runningRooms?.length ? x.runningRooms : taskRooms(x)).map((rid) => cur.rooms.find((r) => r.id === rid)?.name).filter(Boolean).join(', ')
       void scheduleTimer(fid, tk, {
         id, at: x.runningUntil, recipients: emails, tag: `done:${timerLogId(x.id, x.runningUntil)}`,
         title: t('Il task «{task}» è finito', { task: x.name }), body: [room, `+${x.stars} ⭐`].filter(Boolean).join(' · '),
@@ -451,15 +453,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   })
 
   const deleteRoom: Ctx['deleteRoom'] = (id) => mutate((d) => {
-    const taskIds = d.tasks.filter((t) => t.roomId === id).map((t) => t.id)
-    return { ...d, rooms: d.rooms.filter((r) => r.id !== id), tasks: unlinkMissing(d.tasks.filter((t) => t.roomId !== id)), tombstones: tomb(d, [id, ...taskIds]) }
+    // le azioni presenti solo in questa stanza si eliminano; quelle con più stanze perdono solo questa
+    const { tasks, removed } = removeRoom(d.tasks, id)
+    return { ...d, rooms: d.rooms.filter((r) => r.id !== id), tasks: unlinkMissing(tasks), tombstones: tomb(d, [id, ...removed]) }
   })
 
   const upsertTask: Ctx['upsertTask'] = (t) => mutate((d) => {
     const now = Date.now()
     if (t.id && d.tasks.some((x) => x.id === t.id)) {
       // se cambia l'azione da cui si dipende, si riparte «in attesa»
-      return { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, ...t, id: x.id, triggeredAt: t.afterTaskId === x.afterTaskId ? x.triggeredAt : null, updatedAt: now } : x)) }
+      return { ...d, tasks: d.tasks.map((x) => {
+        if (x.id !== t.id) return x
+        const merged: Task = { ...x, ...t, id: x.id, triggeredAt: t.afterTaskId === x.afterTaskId ? x.triggeredAt : null, updatedAt: now }
+        return setRooms(merged, t.roomIds && t.roomIds.length > 0 ? t.roomIds : [t.roomId])
+      }) }
     }
     const task: Task = { ...t, id: t.id ?? uid('t'), createdAt: now, createdBy: meRef.current?.id, lastCompletedAt: null, completions: 0, archived: false, updatedAt: now }
     return { ...d, tasks: [...d.tasks, task] }
@@ -478,10 +485,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (tk && fid && pushConfigured()) void cancelTimer(fid, tk, `${taskId}-${until}`).catch(() => undefined)
   }
 
-  const startTimer: Ctx['startTimer'] = (taskId, memberId) => {
+  const startTimer: Ctx['startTimer'] = (taskId, memberId, roomIds) => {
     const task = dbRef.current.tasks.find((x) => x.id === taskId)
     if (!task?.durationMin || task.runningUntil) return null
-    const started = startRunning(task, memberId)
+    const started = startRunning(task, memberId, Date.now(), roomIds && roomIds.length < taskRooms(task).length ? roomIds : undefined)
     mutate((d) => ({ ...d, tasks: d.tasks.map((x) => (x.id === taskId ? started : x)) }))
     return started.runningUntil ?? null
   }
@@ -502,20 +509,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const until = dbRef.current.tasks.find((x) => x.id === taskId)?.runningUntil
     if (!until) return
     cancelServerTimer(taskId, until)
-    mutate((d) => ({ ...d, tasks: d.tasks.map((x) => (x.id === taskId ? { ...x, runningUntil: null, runningBy: undefined, updatedAt: Date.now() } : x)) }))
+    mutate((d) => ({ ...d, tasks: d.tasks.map((x) => (x.id === taskId ? { ...x, runningUntil: null, runningBy: undefined, runningRooms: undefined, updatedAt: Date.now() } : x)) }))
   }
 
-  const completeTask: Ctx['completeTask'] = (taskId, memberId) => {
-    const task = dbRef.current.tasks.find((t) => t.id === taskId)
+  const completeTask: Ctx['completeTask'] = (taskId, memberId, roomIds) => {
+    const task = dbRef.current.tasks.find((x) => x.id === taskId)
     if (!task) return 0
     const now = Date.now()
+    const all = taskRooms(task)
+    const rooms = roomIds && roomIds.length > 0 ? roomIds.filter((r) => all.includes(r)) : all
     mutate((d) => ({
       ...d,
       // chi dipende da questa azione diventa «da fare»; se questa dipendeva da un'altra, torna in attesa
-      tasks: triggerDependents(d.tasks.map((x) => x.id === taskId
-        ? { ...x, lastCompletedAt: now, completions: x.completions + 1, archived: x.recurrence.type === 'once' && !x.afterTaskId, triggeredAt: x.afterTaskId ? null : x.triggeredAt, updatedAt: now }
-        : x), taskId, now, now),
-      logs: [{ id: uid('l'), taskId, taskName: task.name, roomId: task.roomId, memberId, stars: task.stars, at: now, prev: task.lastCompletedAt, prevTrigger: task.triggeredAt ?? null }, ...d.logs].slice(0, 2000),
+      tasks: triggerDependents(d.tasks.map((x) => (x.id === taskId ? applyCompletion(x, rooms, now) : x)), taskId, now, now),
+      logs: [{
+        id: uid('l'), taskId, taskName: task.name, roomId: rooms[0] ?? task.roomId, ...(all.length > 1 ? { roomIds: rooms } : {}),
+        memberId, stars: task.stars, at: now, prev: task.lastCompletedAt, prevTrigger: task.triggeredAt ?? null, prevRoomDone: task.roomDone ?? null,
+      }, ...d.logs].slice(0, 2000),
     }))
     return task.stars
   }

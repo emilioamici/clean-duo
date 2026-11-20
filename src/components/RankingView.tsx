@@ -122,13 +122,14 @@ export function RankingView() {
           <div className="-mx-4 -my-4 divide-y divide-line/70">
             {db.logs.slice(0, 25).map((l) => {
               const m = db.members.find((x) => x.id === l.memberId)
-              const r = db.rooms.find((x) => x.id === l.roomId)
+              const logRooms = (l.roomIds ?? [l.roomId]).map((id) => db.rooms.find((x) => x.id === id)).filter((x): x is NonNullable<typeof x> => !!x)
+              const r = logRooms[0]
               return (
                 <div key={l.id} className="flex items-center gap-3 px-4 py-3">
                   <Avatar member={m} size={34} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm">{t('{who} ha completato {task}', { who: m?.name ?? t('Ex membro'), task: l.taskName })}</p>
-                    <p className="flex items-center gap-1 text-xs text-muted">{r && <RoomIcon name={r.icon} size={11} />}{r?.name ?? t('Stanza rimossa')} · {timeAgo(l.at)}</p>
+                    <p className="flex items-center gap-1 text-xs text-muted">{r && <RoomIcon name={r.icon} size={11} />}{logRooms.length ? logRooms.map((x) => x.name).join(', ') : t('Stanza rimossa')} · {timeAgo(l.at)}</p>
                   </div>
                   <span className="flex shrink-0 items-center gap-0.5 text-sm font-bold">+{l.stars}<Star size={13} className="fill-brand text-brand" /></span>
                   <button className="glass-btn !p-2 text-muted" aria-label={t('Annulla il completamento di {task}', { task: l.taskName })}

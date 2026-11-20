@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import type { TabId } from '../types'
 import { urgencyOf } from '../lib/clean'
 import { timeAgo } from '../lib/stats'
+import { isRunning } from '../lib/timers'
 import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
 import type { Notif } from '../lib/notifications'
@@ -43,7 +44,7 @@ export function Fab({ label, onClick }: { label: string; onClick: () => void }) 
 export function BottomNav() {
   const { tab, setTab } = useUi()
   const { db } = useApp()
-  const badge = useMemo(() => db.tasks.filter((x) => ['overdue', 'today'].includes(urgencyOf(x))).length, [db.tasks])
+  const badge = useMemo(() => db.tasks.filter((x) => ['overdue', 'today'].includes(urgencyOf(x)) && !isRunning(x)).length, [db.tasks])
   const TABS: { id: TabId; label: string; icon: typeof ListChecks }[] = [
     { id: 'today', label: t('Oggi'), icon: ListChecks },
     { id: 'rooms', label: t('Stanze'), icon: LayoutGrid },

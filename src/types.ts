@@ -36,7 +36,14 @@ export interface Room {
 
 export interface Task {
   id: string
+  /** Stanza principale (la prima); le altre, se ce ne sono, sono in `roomIds` */
   roomId: string
+  /** Tutte le stanze dell'azione (compresa la principale). Assente = solo `roomId` */
+  roomIds?: string[]
+  /** Ultimo completamento per ciascuna stanza (solo per azioni con più stanze, dopo il primo completamento) */
+  roomDone?: Record<string, number>
+  /** Istruzioni, come si fa, quando farla… */
+  notes?: string
   name: string
   stars: 1 | 2 | 3 | 4 | 5
   recurrence: Recurrence
@@ -59,6 +66,8 @@ export interface Task {
   runningUntil?: number | null
   /** Chi l'ha avviata: a lui vanno le stelle */
   runningBy?: string
+  /** Stanze per cui verrà completata alla fine (assente = tutte) */
+  runningRooms?: string[]
   /** Una tantum completata -> archiviata */
   archived: boolean
   updatedAt: number
@@ -69,6 +78,8 @@ export interface ActivityLog {
   taskId: string
   taskName: string
   roomId: string
+  /** Stanze completate, se più di una: le stelle sono comunque quelle dell'azione, una volta sola */
+  roomIds?: string[]
   memberId: string
   stars: number
   at: number
@@ -79,6 +90,7 @@ export interface ActivityLog {
   /** stato dell'azione prima di questo completamento (per poterlo annullare esattamente) */
   prev?: number | null
   prevTrigger?: number | null
+  prevRoomDone?: Record<string, number> | null
 }
 
 export interface Settings {

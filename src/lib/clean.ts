@@ -1,5 +1,6 @@
 import type { Room, Task } from '../types'
 import { locale, t } from '../i18n'
+import { inRoom, lastFor, taskRooms } from './rooms'
 
 export const DAY = 86_400_000
 
@@ -36,25 +37,34 @@ function addMonths(ts: number, months: number): number {
   return d.getTime()
 }
 
-/** Prossima scadenza (ms) oppure null se una tantum archiviata. */
-export function nextDue(task: Task): number | null {
+/**
+ * Prossima scadenza (ms) oppure null se una tantum archiviata. Con `roomId` è quella di quella stanza;
+ * senza, per un'azione con più stanze, è la più vicina (la più urgente).
+ */
+export function nextDue(task: Task, roomId?: string): number | null {
   if (task.archived) return null
   // azione che parte dopo un'altra: «da fare» da quando l'altra è stata completata, altrimenti in attesa
   if (task.afterTaskId) return task.triggeredAt ? startOfDay(task.triggeredAt) : null
+  const rooms = taskRooms(task)
+  if (!roomId && rooms.length > 1) {
+    const dues = rooms.map((r) => nextDue(task, r)).filter((d): d is number => d !== null)
+    return dues.length ? Math.min(...dues) : null
+  }
+  const last = lastFor(task, roomId ?? rooms[0])
   const { type, every, weekdays } = task.recurrence
   const n = Math.max(1, every || 1)
-  const ref = task.lastCompletedAt ?? task.createdAt
+  const ref = last ?? task.createdAt
 
-  if (type === 'once') return task.lastCompletedAt ? null : startOfDay(task.createdAt)
+  if (type === 'once') return last ? null : startOfDay(task.createdAt)
 
   if (type === 'daily') {
-    return task.lastCompletedAt ? startOfDay(ref) + n * DAY : startOfDay(ref)
+    return last ? startOfDay(ref) + n * DAY : startOfDay(ref)
   }
 
   if (type === 'weekly') {
     if (weekdays && weekdays.length > 0) {
       const days = [...weekdays].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7))
-      if (!task.lastCompletedAt) {
+      if (!last) {
         // Mai fatta: prima occorrenza da oggi della creazione in poi
         const base = startOfDay(ref)
         for (let i = 0; i < 7; i++) {
@@ -80,17 +90,17 @@ export function nextDue(task: Task): number | null {
         if (days.includes(t.getDay())) return t.getTime()
       }
     }
-    return task.lastCompletedAt ? startOfDay(ref) + n * 7 * DAY : startOfDay(ref)
+    return last ? startOfDay(ref) + n * 7 * DAY : startOfDay(ref)
   }
 
   // monthly
-  return task.lastCompletedAt ? startOfDay(addMonths(ref, n)) : startOfDay(ref)
+  return last ? startOfDay(addMonths(ref, n)) : startOfDay(ref)
 }
 
 export type Urgency = 'overdue' | 'today' | 'soon' | 'later'
 
-export function urgencyOf(task: Task, now = Date.now()): Urgency {
-  const due = nextDue(task)
+export function urgencyOf(task: Task, now = Date.now(), roomId?: string): Urgency {
+  const due = nextDue(task, roomId)
   if (due === null) return 'later'
   if (due < startOfDay(now)) return 'overdue'
   if (due <= endOfDay(now)) return 'today'
@@ -99,25 +109,27 @@ export function urgencyOf(task: Task, now = Date.now()): Urgency {
 }
 
 /** 0..1 — quanto è "pulita" la task (1 = appena fatta, 0 = scaduta). */
-export function taskCleanliness(task: Task, now = Date.now()): number {
+export function taskCleanliness(task: Task, now = Date.now(), roomId?: string): number {
   if (task.archived) return 1
-  const due = nextDue(task)
+  const rooms = taskRooms(task)
+  if (!roomId && rooms.length > 1) return rooms.reduce((s, r) => s + taskCleanliness(task, now, r), 0) / rooms.length
+  const due = nextDue(task, roomId)
   if (due === null) return 1
   // la scadenza è a inizio giornata: il "tempo utile" arriva a fine giornata
   const deadline = due + DAY
-  const ref = task.afterTaskId ? task.triggeredAt ?? now : task.lastCompletedAt ?? task.createdAt
+  const ref = task.afterTaskId ? task.triggeredAt ?? now : lastFor(task, roomId ?? rooms[0]) ?? task.createdAt
   const total = task.recurrence.type === 'once' && !task.afterTaskId ? 7 * DAY : Math.max(DAY, deadline - ref)
   return Math.max(0, Math.min(1, (deadline - now) / total))
 }
 
 /** 0..100 — media pesata per difficoltà delle task attive della stanza. */
 export function roomCleanliness(room: Room, tasks: Task[], now = Date.now()): number {
-  const active = tasks.filter((t) => t.roomId === room.id && !t.archived)
+  const active = tasks.filter((t) => inRoom(t, room.id) && !t.archived)
   if (active.length === 0) return 100
   let sum = 0
   let weight = 0
   for (const t of active) {
-    sum += taskCleanliness(t, now) * t.stars
+    sum += taskCleanliness(t, now, room.id) * t.stars
     weight += t.stars
   }
   return Math.round((sum / weight) * 100)
@@ -129,8 +141,8 @@ export function cleanColor(pct: number): string {
   return `hsl(${hue} 58% 48%)`
 }
 
-export function dueLabel(task: Task, now = Date.now()): string {
-  const due = nextDue(task)
+export function dueLabel(task: Task, now = Date.now(), roomId?: string): string {
+  const due = nextDue(task, roomId)
   if (due === null) return t('Completata')
   const diff = Math.round((startOfDay(due) - startOfDay(now)) / DAY)
   if (diff < -1) return t('Scaduta da {n} giorni', { n: -diff })

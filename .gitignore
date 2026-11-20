@@ -7,3 +7,6 @@ dev-dist
 *.tsbuildinfo
 worker/wrangler.toml
 worker/.wrangler
+
+# documento personale, tenuto offline
+DESIGN_SYSTEM.md

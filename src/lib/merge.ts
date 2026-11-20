@@ -1,5 +1,6 @@
 import { t } from '../i18n'
 import { unlinkMissing } from './deps'
+import { taskRooms } from './rooms'
 import type { ActivityLog, AppDatabase, Task } from '../types'
 
 const DEDUPE_WINDOW = 2 * 60_000
@@ -28,14 +29,38 @@ function mergeList<T extends Versioned>(
  */
 const combineTask = (newer: Task): Task => newer
 
-/** Se nello storico c'è un completamento più recente di quello registrato nell'azione, l'azione lo recepisce. Gli storici annullati non contano. */
+/**
+ * Se nello storico c'è un completamento più recente di quello registrato nell'azione, l'azione lo recepisce
+ * (anche per stanza). Gli storici annullati non contano.
+ */
 function reconcileWithLogs(tasks: Task[], logs: ActivityLog[]): Task[] {
   const last = new Map<string, number>()
-  for (const l of logs) last.set(l.taskId, Math.max(last.get(l.taskId) ?? 0, l.at))
+  const perRoom = new Map<string, Map<string, number>>()
+  for (const l of logs) {
+    last.set(l.taskId, Math.max(last.get(l.taskId) ?? 0, l.at))
+    const m = perRoom.get(l.taskId) ?? new Map<string, number>()
+    for (const r of l.roomIds ?? [l.roomId]) m.set(r, Math.max(m.get(r) ?? 0, l.at))
+    perRoom.set(l.taskId, m)
+  }
   return tasks.map((x) => {
+    let out = x
+    const multi = taskRooms(x).length > 1
+    if (multi) {
+      // per stanza: un completamento fatto altrove (offline) e non ancora nell'azione
+      const rooms = perRoom.get(x.id)
+      const done = { ...(x.roomDone ?? {}) }
+      let changed = false
+      for (const r of taskRooms(x)) {
+        const at = rooms?.get(r) ?? 0
+        if (at > (done[r] ?? 0)) { done[r] = at; changed = true }
+      }
+      if (changed) out = { ...out, roomDone: done }
+    }
     const m = last.get(x.id) ?? 0
-    if (m <= (x.lastCompletedAt ?? 0)) return x
-    return { ...x, lastCompletedAt: m, completions: x.completions + 1, archived: x.archived || (x.recurrence.type === 'once' && !x.afterTaskId) }
+    if (m > (out.lastCompletedAt ?? 0)) {
+      out = { ...out, lastCompletedAt: m, completions: out.completions + 1, archived: out.archived || (out.recurrence.type === 'once' && !out.afterTaskId) }
+    }
+    return out
   })
 }
 
