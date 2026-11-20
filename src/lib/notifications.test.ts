@@ -151,6 +151,23 @@ describe('dipendenze tra azioni', () => {
     expect(triggerDependents(after, 'a', now + 5000, now + 5000)[1].triggeredAt).toBe(now)
   })
 
+  it('con il flag, quando l\'azione passa da «in attesa» a «da fare» parte una notifica per gli altri', async () => {
+    const { triggerDependents } = await import('./deps')
+    const db = createDemoDb()
+    const a = mk({ id: 'a' }); const b = mk({ id: 'b', afterTaskId: 'a', triggeredAt: null, notifyWhenTodo: true, name: 'Svuotare' })
+    const prev = { ...db, tasks: [a, b] }
+    const next = { ...db, tasks: triggerDependents([a, b], 'a', 1000, 1000) }
+    const ev = changeEvents(prev, next).filter((e) => e.kind === 'todo')
+    expect(ev).toHaveLength(1)
+    expect(ev[0].title).toContain('Svuotare')
+    expect(diffNotifications(prev, next, db.members[0].id).map((n) => n.kind)).toContain('todo')
+    expect(pushTargets(prev, next, db.members[0].id).some((p) => p.event.kind === 'todo')).toBe(db.members.slice(1).some((m) => m.email))
+    // senza flag, nessuna notifica; già attiva, nemmeno
+    const noFlag = { ...next, tasks: next.tasks.map((x) => ({ ...x, notifyWhenTodo: false })) }
+    expect(changeEvents(prev, noFlag).filter((e) => e.kind === 'todo')).toHaveLength(0)
+    expect(changeEvents(next, next).filter((e) => e.kind === 'todo')).toHaveLength(0)
+  })
+
   it('se la prima è a tempo, la seconda parte quando il tempo è finito (all\'ora di fine)', async () => {
     const { startRunning, finalizeTimers } = await import('./timers')
     const db = base()

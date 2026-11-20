@@ -1,5 +1,9 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "{n} azioni da fare": "{n} actions to do",
+  "«{task}» è ora da fare": "“{task}” is now to do",
+  "Tutti i membri ricevono una notifica quando l’azione esce dall’attesa.": "All members get a notification when the action leaves the waiting state.",
+  "Avvisa quando diventa da fare": "Notify when it becomes to-do",
   "1 giorno alla fine": "1 day left",
   "1 membro": "1 member",
   "API Key (solo per Picker)": "API Key (Picker only)",

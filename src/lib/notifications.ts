@@ -1,8 +1,9 @@
 import type { AppDatabase, Member, NotifyPrefs } from '../types'
 import { t } from '../i18n'
 import { taskRooms } from './rooms'
+import { isWaiting } from './deps'
 
-export type NotifKind = 'done' | 'task' | 'member' | 'reminder'
+export type NotifKind = 'done' | 'task' | 'member' | 'reminder' | 'todo'
 
 export interface Notif {
   id: string
@@ -17,7 +18,7 @@ export interface Notif {
 
 /** Un fatto avvenuto nella casa, ricavato confrontando il database prima e dopo. */
 export interface ChangeEvent {
-  kind: 'done' | 'task' | 'member'
+  kind: 'done' | 'task' | 'member' | 'todo'
   key: string
   /** chi l'ha fatto (null = non si sa: un membro aggiunto) */
   actor: string | null
@@ -71,6 +72,19 @@ export function changeEvents(prev: AppDatabase, next: AppDatabase): ChangeEvent[
     }
   }
 
+  // azioni «in attesa» che diventano «da fare» (dopo un'altra azione): solo se hanno il flag. Quelle da dispositivo le notifica il server.
+  const before = new Map(prev.tasks.map((x) => [x.id, x]))
+  const woke = next.tasks.filter((x) => x.notifyWhenTodo && x.afterTaskId && !x.onEvent && !x.archived && !isWaiting(x) && before.has(x.id) && isWaiting(before.get(x.id)!))
+  if (woke.length <= MASS_LIMIT) {
+    for (const x of woke) {
+      out.push({
+        kind: 'todo', key: `todo:${x.id}:${x.triggeredAt ?? 0}`, actor: null, taskId: x.id,
+        title: t('«{task}» è ora da fare', { task: x.name }),
+        body: [taskRooms(x).map(room).filter(Boolean).join(', '), `${x.stars} ⭐`].filter(Boolean).join(' · '),
+      })
+    }
+  }
+
   const prevMembers = new Set(prev.members.map((m) => m.id))
   const members = next.members.filter((m) => !prevMembers.has(m.id))
   if (members.length <= MASS_LIMIT) {
@@ -95,11 +109,11 @@ function group<T extends { kind: string }>(items: T[], make: (kind: string, list
 /** Notifiche per il membro `me`: eventi fatti da altri che gli interessano (mai le sue modifiche). */
 export function diffNotifications(prev: AppDatabase, next: AppDatabase, me: string, at = Date.now()): Notif[] {
   const myPrefs = notifyPrefs(next.members.find((m) => m.id === me))
-  const events = changeEvents(prev, next).filter((e) => (e.actor !== me || e.timer) && e.subject !== me && myPrefs[e.kind])
+  const events = changeEvents(prev, next).filter((e) => (e.actor !== me || e.timer) && e.subject !== me && (e.kind === 'todo' || myPrefs[e.kind]))
   const notifs: Notif[] = events.map((e) => ({ id: e.key, kind: e.kind, title: e.title, body: e.body, at, read: false, taskId: e.taskId }))
   return group(notifs, (kind, list) => ({
     id: `${kind}:group:${list.map((n) => n.id).sort()[0]}:${list.length}`, kind: kind as NotifKind, at, read: false,
-    title: kind === 'done' ? t('{n} azioni completate', { n: list.length }) : kind === 'task' ? t('{n} nuove azioni', { n: list.length }) : t('{n} nuovi membri', { n: list.length }),
+    title: kind === 'done' ? t('{n} azioni completate', { n: list.length }) : kind === 'todo' ? t('{n} azioni da fare', { n: list.length }) : kind === 'task' ? t('{n} nuove azioni', { n: list.length }) : t('{n} nuovi membri', { n: list.length }),
     body: [...new Set(list.map((n) => n.title.split(' ')[0]))].join(', '),
   }))
 }
@@ -117,7 +131,7 @@ export function pushTargets(prev: AppDatabase, next: AppDatabase, me: string): P
     if (e.actor !== null && e.actor !== me) continue // l'ha fatto un altro: ci pensa il suo dispositivo
     for (const m of next.members) {
       if (m.id === me || m.id === e.subject || !m.email) continue
-      if (!notifyPrefs(m)[e.kind]) continue
+      if (e.kind !== 'todo' && !notifyPrefs(m)[e.kind]) continue
       out.push({ event: e, email: m.email.toLowerCase(), memberId: m.id })
     }
   }

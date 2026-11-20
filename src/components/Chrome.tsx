@@ -118,7 +118,7 @@ export function NotificationBell() {
   )
 }
 
-const NOTIF_ICON = { done: CheckCheck, task: ClipboardPlus, member: UserPlus, reminder: BellRing } as const
+const NOTIF_ICON = { done: CheckCheck, task: ClipboardPlus, member: UserPlus, reminder: BellRing, todo: BellRing } as const
 
 function NotifIcon({ n }: { n: Notif }) {
   const I = NOTIF_ICON[n.kind]
