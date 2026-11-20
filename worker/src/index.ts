@@ -167,7 +167,7 @@ async function notify(env: Env, req: Request): Promise<unknown> {
 
 
 interface ScheduledItem { at: number; title: string; body: string; tag?: string }
-const MAX_SCHEDULED = 8
+const MAX_SCHEDULED = 20
 const rkey = (fileId: string, email: string) => `r:${fileId}:${email.toLowerCase()}`
 
 /**

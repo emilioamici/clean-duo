@@ -1,5 +1,6 @@
 import type { AppDatabase } from '../types'
 import { currentAssignee, endOfDay, nextDue } from './clean'
+import { isEventDriven } from './deps'
 import { t } from '../i18n'
 import type { ScheduledReminder } from '../services/push'
 
@@ -39,4 +40,31 @@ export function buildReminders(db: AppDatabase, me: string | null, time: string,
     if (n > 0) out.push({ at: at.getTime(), ...reminderText(n), tag: 'cleanduo-reminder' })
   }
   return out
+}
+
+/** Ora (locale) a cui avvisare che un'azione con scadenza a giorni è diventata «da fare». */
+export const TODO_NOTICE_HOUR = 8
+
+/**
+ * Notifiche «è ora da fare» per le azioni con il flag e una scadenza nei prossimi giorni, all'ora fissa del mattino
+ * del giorno di scadenza. Più azioni nello stesso giorno diventano una sola notifica. Quelle in attesa di un'altra
+ * azione o di un dispositivo non c'entrano: le avvisa il momento in cui partono.
+ */
+export function buildTodoNotices(db: AppDatabase, me: string | null, now = Date.now(), days = 7): ScheduledReminder[] {
+  const byTime = new Map<number, string[]>()
+  for (const x of db.tasks) {
+    if (!x.notifyWhenTodo || x.archived || isEventDriven(x)) continue
+    const due = nextDue(x)
+    if (due === null) continue
+    const who = currentAssignee(x)
+    if (who && who !== me) continue
+    const at = new Date(due); at.setHours(TODO_NOTICE_HOUR, 0, 0, 0)
+    if (at.getTime() <= now + 30_000 || at.getTime() > now + days * 86_400_000) continue
+    byTime.set(at.getTime(), [...(byTime.get(at.getTime()) ?? []), x.name])
+  }
+  return [...byTime.entries()].sort((a, b) => a[0] - b[0]).map(([at, names]) => ({
+    at, tag: `cleanduo-todo-${at}`,
+    title: names.length === 1 ? t('«{task}» è ora da fare', { task: names[0] }) : t('{n} azioni da fare', { n: names.length }),
+    body: names.length === 1 ? t('Dai un’occhiata alla lista.') : names.join(', '),
+  }))
 }

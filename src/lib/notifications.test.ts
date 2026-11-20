@@ -402,3 +402,20 @@ describe('azioni in più stanze', () => {
     expect(n.body).toContain('+3')
   })
 })
+
+describe('azioni con scadenza e flag «avvisa»', () => {
+  it('programma una notifica alle 8 del giorno di scadenza, raggruppando le azioni dello stesso giorno', async () => {
+    const { buildTodoNotices } = await import('./reminders')
+    const db = createDemoDb()
+    const now = new Date(2026, 10, 20, 9, 0).getTime()
+    const day = new Date(2026, 10, 23).getTime()
+    const mk = (id: string, over = {}) => ({ ...db.tasks[0], id, name: id, notifyWhenTodo: true, assignment: { mode: 'anyone' as const }, recurrence: { type: 'once' as const, every: 1 }, createdAt: day, lastCompletedAt: null, archived: false, ...over })
+    const d = { ...db, tasks: [mk('uno'), mk('due'), mk('senza', { notifyWhenTodo: false })] }
+    const out = buildTodoNotices(d, 'm1', now)
+    expect(out).toHaveLength(1)
+    expect(new Date(out[0].at).getHours()).toBe(8)
+    expect(out[0].body).toContain('uno')
+    expect(out[0].body).not.toContain('senza')
+    expect(buildTodoNotices(d, 'm1', day + 86_400_000)).toEqual([]) // passato
+  })
+})

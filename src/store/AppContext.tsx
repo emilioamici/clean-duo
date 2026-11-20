@@ -10,7 +10,7 @@ import { hasSession } from '../services/broker'
 import { PushHttpError, ackAutomationEvents, cancelTimer, deleteTuyaRule, pullAutomationEvents, registerTuyaRule, currentSubscription, disablePush, enablePush, pushConfigured, pushSupported, refreshPush, scheduleReminders, scheduleTimer, sendPush } from '../services/push'
 import { enqueue, flushQueue, type QueuedPush, type SendResult } from '../services/pushQueue'
 import { diffNotifications, mergeNotifications, pushTargets, type Notif } from '../lib/notifications'
-import { DEFAULT_REMINDER_TIME, buildReminders, dueNow, reminderText, validTime } from '../lib/reminders'
+import { DEFAULT_REMINDER_TIME, buildReminders, buildTodoNotices, dueNow, reminderText, validTime } from '../lib/reminders'
 import { t } from '../i18n'
 import { finalizeTimers, finishEarly, startRunning, timerLogId } from '../lib/timers'
 import { triggerDependents, unlinkMissing } from '../lib/deps'
@@ -360,7 +360,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (meta.mode !== 'drive' || !meta.fileId || !pushConfigured() || !prefs.pushEnabled) return
     const tk = drive.currentToken()
     if (!tk) return
-    const items = prefs.reminders && validTime(prefs.reminderTime) ? buildReminders(dbRef.current, meRef.current?.id ?? null, prefs.reminderTime) : []
+    const daily = prefs.reminders && validTime(prefs.reminderTime) ? buildReminders(dbRef.current, meRef.current?.id ?? null, prefs.reminderTime) : []
+    // più le azioni con il flag «avvisa quando diventa da fare»; il server tiene al massimo 20 voci
+    const items = [...daily, ...buildTodoNotices(dbRef.current, meRef.current?.id ?? null)].sort((a, b) => a.at - b.at).slice(0, 20)
     void scheduleReminders(meta.fileId, tk, items).catch(() => undefined)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [remindersKey])
