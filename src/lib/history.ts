@@ -1,4 +1,5 @@
 import type { AppDatabase } from '../types'
+import { isEventDriven } from './deps'
 
 /**
  * Annulla un completamento dalla cronologia (ci si è sbagliati a spuntare): toglie il log (e quindi le stelle) e fa tornare l'azione
@@ -16,7 +17,7 @@ export function undoCompletion(d: AppDatabase, logId: string, now = Date.now()):
       const before = log.prev !== undefined ? log.prev : rest.length ? Math.max(...rest) : null
       return {
         ...x, lastCompletedAt: before, roomDone: log.prevRoomDone ?? undefined, completions: Math.max(0, x.completions - 1), archived: false,
-        triggeredAt: x.afterTaskId ? log.prevTrigger ?? x.triggeredAt : x.triggeredAt, updatedAt: now,
+        triggeredAt: isEventDriven(x) ? log.prevTrigger ?? x.triggeredAt : x.triggeredAt, updatedAt: now,
       }
     }
     // chi dipendeva da questa azione e si era attivato per quel completamento, torna in attesa

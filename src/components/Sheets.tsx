@@ -40,6 +40,8 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
   const [mode, setMode] = useState<Assignment['mode']>(existing?.assignment.mode ?? 'anyone')
   const [icon, setIcon] = useState<string | null>(existing?.icon ?? null)
   const [afterId, setAfterId] = useState<string | null>(existing?.afterTaskId ?? null)
+  const eventId = existing?.onEvent ?? null
+  const eventName = eventId ? (db.automations ?? []).find((a) => a.id === eventId)?.name ?? '…' : null
   const [duration, setDuration] = useState<number | null>(existing?.durationMin ?? null)
   const [picked, setPicked] = useState<string[]>(
     existing?.assignment.mode === 'member' ? [existing.assignment.memberId]
@@ -58,7 +60,8 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
     if (mode === 'rotation' && picked.length >= 2) assignment = { mode: 'rotation', memberIds: picked }
     upsertTask({
       id: existing?.id, roomId: room, roomIds: rooms.length > 1 ? rooms : undefined, name: name.trim(), notes: notes.trim() || undefined, stars, assignment,
-      recurrence: afterId !== null ? { type: 'daily', every: 1 } : { type, every: type === 'once' ? 1 : every, ...(type === 'weekly' && weekdays.length ? { weekdays } : {}) },
+      onEvent: eventId ?? undefined,
+      recurrence: afterId !== null || eventId ? { type: 'daily', every: 1 } : { type, every: type === 'once' ? 1 : every, ...(type === 'weekly' && weekdays.length ? { weekdays } : {}) },
       icon: icon ?? undefined,
       afterTaskId: afterId ?? undefined,
       durationMin: duration ? Math.min(MAX_DURATION_MIN, Math.max(1, Math.round(duration))) : undefined,
@@ -124,6 +127,8 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
         ))}
       </div>
 
+      {!eventId && (
+        <>
       <label className="label">{t('Quando parte')}</label>
       <div className="rounded-2xl border border-line bg-bg/60 p-3">
         <Toggle checked={afterId !== null} onChange={(v) => setAfterId(v ? options[0]?.id ?? null : null)} label={t('Dopo un’altra azione')} hint={options.length === 0 && afterId === null ? t('Crea prima un’altra azione da cui dipendere.') : t('Resta in attesa e va tra le cose da fare quando l’altra è completata (o, se a tempo, finita).')} />
@@ -134,7 +139,10 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
         )}
       </div>
 
-      {afterId === null && (
+        </>
+      )}
+      {eventName && <p className="mt-2 rounded-xl bg-brand/10 p-3 text-sm text-brand">{t('Parte quando lo segnala il dispositivo «{name}» (si gestisce da Impostazioni → Automazioni).', { name: eventName })}</p>}
+      {afterId === null && !eventId && (
         <>
       <label className="label">{t('Ricorrenza')}</label>
       <Segmented<RecurrenceType> value={type} onChange={setType} options={[{ id: 'once', label: t('Singola') }, { id: 'daily', label: t('Giorni') }, { id: 'weekly', label: t('Sett.') }, { id: 'monthly', label: t('Mesi') }]} />

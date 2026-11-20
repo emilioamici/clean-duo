@@ -1,4 +1,5 @@
 import type { Task } from '../types'
+import { isEventDriven } from './deps'
 
 /** Tutte le stanze dell'azione (la principale per prima). */
 export const taskRooms = (task: Task): string[] => (task.roomIds && task.roomIds.length > 0 ? task.roomIds : [task.roomId])
@@ -32,8 +33,8 @@ export function applyCompletion(task: Task, done: string[], at: number, now = at
     roomDone,
     lastCompletedAt: Math.max(task.lastCompletedAt ?? 0, at),
     completions: task.completions + 1,
-    archived: task.recurrence.type === 'once' && !task.afterTaskId && everyRoomDone,
-    triggeredAt: task.afterTaskId ? null : task.triggeredAt,
+    archived: task.recurrence.type === 'once' && !isEventDriven(task) && everyRoomDone,
+    triggeredAt: isEventDriven(task) ? null : task.triggeredAt,
     updatedAt: now,
   }
 }

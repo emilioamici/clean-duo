@@ -18,6 +18,8 @@ interface UiCtx {
   openRoomSheet: (s: { id?: string } | null) => void
   memberSheet: { id?: string } | null
   openMemberSheet: (s: { id?: string } | null) => void
+  automationSheet: { id?: string } | null
+  openAutomationSheet: (s: { id?: string } | null) => void
   switcherOpen: boolean
   openSwitcher: (o: boolean) => void
   celebration: CelebrationState
@@ -42,6 +44,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const [taskSheet, openTaskSheet] = useState<TaskSheetState>(null)
   const [roomSheet, openRoomSheet] = useState<{ id?: string } | null>(null)
   const [memberSheet, openMemberSheet] = useState<{ id?: string } | null>(null)
+  const [automationSheet, openAutomationSheet] = useState<{ id?: string } | null>(null)
   const [switcherOpen, openSwitcher] = useState(false)
   const [celebration, setCelebration] = useState<CelebrationState>(null)
   const pending = useRef<{ taskId: string; origin?: { x: number; y: number }; roomId?: string } | null>(null)
@@ -92,7 +95,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   }, [doComplete])
 
   return (
-    <Ctx.Provider value={{ tab, setTab, roomId, openRoom, taskSheet, openTaskSheet, roomSheet, openRoomSheet, memberSheet, openMemberSheet, switcherOpen, openSwitcher, celebration, complete, finish, resumePending }}>
+    <Ctx.Provider value={{ tab, setTab, roomId, openRoom, taskSheet, openTaskSheet, roomSheet, openRoomSheet, memberSheet, openMemberSheet, automationSheet, openAutomationSheet, switcherOpen, openSwitcher, celebration, complete, finish, resumePending }}>
       {children}
     </Ctx.Provider>
   )

@@ -1,7 +1,10 @@
 import type { Task } from '../types'
 
 /** L'azione aspetta il completamento di un'altra e non è ancora stata attivata. */
-export const isWaiting = (task: Task): boolean => !!task.afterTaskId && !task.triggeredAt && !task.archived
+/** L'azione non ha una scadenza propria: parte quando un'altra azione è completata o quando un dispositivo lo segnala. */
+export const isEventDriven = (task: Task): boolean => !!(task.afterTaskId || task.onEvent)
+
+export const isWaiting = (task: Task): boolean => isEventDriven(task) && !task.triggeredAt && !task.archived
 
 /**
  * Quando `doneId` viene completata (o, se a tempo, finisce), le azioni che dipendono da lei diventano «da fare».

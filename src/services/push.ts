@@ -102,3 +102,31 @@ export async function scheduleTimer(fileId: string, token: string, m: TimerPush)
 export async function cancelTimer(fileId: string, token: string, id: string): Promise<void> {
   await post('/timer', token, { fileId, id, cancel: true })
 }
+
+/* ------------------------------------------------------------------ automazioni (Tuya) */
+
+export interface TuyaCondition { code: string; op: 'eq' | 'ne' | 'lt' | 'gt' | 'bit' | 'contains'; value: string }
+export interface TuyaDeviceInfo { name: string; online: boolean; category: string; status: Array<{ code: string; value: unknown }>; matched?: boolean }
+
+/** Legge dal vivo i dati del dispositivo (e valuta la condizione, se data). */
+export async function tuyaStatus(fileId: string, token: string, deviceId: string, condition?: TuyaCondition): Promise<TuyaDeviceInfo> {
+  return (await post('/tuya/status', token, { fileId, deviceId, condition })) as TuyaDeviceInfo
+}
+
+export interface TuyaRulePayload extends TuyaCondition { ruleId: string; deviceId: string; recipients: string[]; title: string; body: string }
+
+/** Il server controlla il dispositivo e segnala quando la condizione si verifica. */
+export async function registerTuyaRule(fileId: string, token: string, rule: TuyaRulePayload): Promise<void> {
+  await post('/tuya/rule', token, { fileId, ...rule })
+}
+export async function deleteTuyaRule(fileId: string, token: string, ruleId: string): Promise<void> {
+  await post('/tuya/rule/delete', token, { fileId, ruleId })
+}
+
+export interface ServerEvent { id: string; ruleId: string; at: number }
+export async function pullAutomationEvents(fileId: string, token: string): Promise<ServerEvent[]> {
+  return ((await post('/automation/events', token, { fileId })) as { events?: ServerEvent[] }).events ?? []
+}
+export async function ackAutomationEvents(fileId: string, token: string, ids: string[]): Promise<void> {
+  await post('/automation/ack', token, { fileId, ids })
+}

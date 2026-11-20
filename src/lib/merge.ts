@@ -1,6 +1,7 @@
 import { t } from '../i18n'
-import { unlinkMissing } from './deps'
+import { isEventDriven, unlinkMissing } from './deps'
 import { taskRooms } from './rooms'
+import { unlinkMissingAutomations } from './automations'
 import type { ActivityLog, AppDatabase, Task } from '../types'
 
 const DEDUPE_WINDOW = 2 * 60_000
@@ -58,7 +59,7 @@ function reconcileWithLogs(tasks: Task[], logs: ActivityLog[]): Task[] {
     }
     const m = last.get(x.id) ?? 0
     if (m > (out.lastCompletedAt ?? 0)) {
-      out = { ...out, lastCompletedAt: m, completions: out.completions + 1, archived: out.archived || (out.recurrence.type === 'once' && !out.afterTaskId) }
+      out = { ...out, lastCompletedAt: m, completions: out.completions + 1, archived: out.archived || (out.recurrence.type === 'once' && !isEventDriven(out)) }
     }
     return out
   })
@@ -89,6 +90,7 @@ export function mergeDb(local: AppDatabase, remote: AppDatabase): AppDatabase {
   const base = settingsFromLocal ? local : remote
 
   const logs = mergeLogs(local.logs, remote.logs, tombstones)
+  const automations = mergeList(local.automations ?? [], remote.automations ?? [], tombstones)
   return {
     schema: 1,
     houseName: base.houseName,
@@ -96,7 +98,8 @@ export function mergeDb(local: AppDatabase, remote: AppDatabase): AppDatabase {
     settingsUpdatedAt: base.settingsUpdatedAt,
     members: mergeList(local.members, remote.members, tombstones),
     rooms: mergeList(local.rooms, remote.rooms, tombstones),
-    tasks: unlinkMissing(reconcileWithLogs(mergeList(local.tasks, remote.tasks, tombstones, combineTask), logs)),
+    tasks: unlinkMissingAutomations(unlinkMissing(reconcileWithLogs(mergeList(local.tasks, remote.tasks, tombstones, combineTask), logs)), automations),
+    automations,
     logs,
     tombstones,
     lastUpdated: Math.max(local.lastUpdated, remote.lastUpdated),
@@ -121,6 +124,7 @@ export function parseDb(raw: unknown): AppDatabase {
     members: d.members,
     rooms: d.rooms,
     tasks: d.tasks,
+    automations: d.automations ?? [],
     logs: d.logs ?? [],
     settings: d.settings ?? { weeklyGoal: 10, prize: '', prizeEmoji: '🏆' },
     settingsUpdatedAt: d.settingsUpdatedAt ?? 0,

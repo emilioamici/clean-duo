@@ -58,6 +58,8 @@ export interface Task {
   icon?: string
   /** Parte quando l'azione con questo id viene completata (o, se a tempo, finisce) */
   afterTaskId?: string
+  /** Parte quando lo segnala un'automazione (id): in attesa finché il dispositivo non lo segnala */
+  onEvent?: string
   /** Quando l'azione precedente è stata completata: da allora questa è «da fare». Vuoto = in attesa */
   triggeredAt?: number | null
   /** Durata in minuti: il tap avvia l'azione, che resta «in corso» e si completa da sola alla fine (es. asciugatrice) */
@@ -99,12 +101,32 @@ export interface Settings {
   prizeEmoji: string
 }
 
+/** Collegamento a un dispositivo (per ora Tuya): quando la condizione si verifica, l'azione collegata va tra le cose da fare. */
+export interface Automation {
+  id: string
+  kind: 'tuya'
+  name: string
+  deviceId: string
+  /** codice del dato del dispositivo (es. «fault») */
+  code: string
+  op: 'eq' | 'ne' | 'lt' | 'gt' | 'bit' | 'contains'
+  value: string
+  /** azione che diventa «da fare» */
+  taskId: string
+  enabled: boolean
+  /** ultima volta che il dispositivo ha segnalato (ms) */
+  lastFiredAt?: number
+  updatedAt: number
+}
+
 export interface AppDatabase {
   schema: 1
   houseName: string
   members: Member[]
   rooms: Room[]
   tasks: Task[]
+  /** Automazioni con i dispositivi */
+  automations?: Automation[]
   logs: ActivityLog[]
   settings: Settings
   settingsUpdatedAt: number

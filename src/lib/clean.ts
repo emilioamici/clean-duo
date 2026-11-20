@@ -1,5 +1,6 @@
 import type { Room, Task } from '../types'
 import { locale, t } from '../i18n'
+import { isEventDriven } from './deps'
 import { inRoom, lastFor, taskRooms } from './rooms'
 
 export const DAY = 86_400_000
@@ -44,7 +45,7 @@ function addMonths(ts: number, months: number): number {
 export function nextDue(task: Task, roomId?: string): number | null {
   if (task.archived) return null
   // azione che parte dopo un'altra: «da fare» da quando l'altra è stata completata, altrimenti in attesa
-  if (task.afterTaskId) return task.triggeredAt ? startOfDay(task.triggeredAt) : null
+  if (isEventDriven(task)) return task.triggeredAt ? startOfDay(task.triggeredAt) : null
   const rooms = taskRooms(task)
   if (!roomId && rooms.length > 1) {
     const dues = rooms.map((r) => nextDue(task, r)).filter((d): d is number => d !== null)
@@ -117,8 +118,8 @@ export function taskCleanliness(task: Task, now = Date.now(), roomId?: string): 
   if (due === null) return 1
   // la scadenza è a inizio giornata: il "tempo utile" arriva a fine giornata
   const deadline = due + DAY
-  const ref = task.afterTaskId ? task.triggeredAt ?? now : lastFor(task, roomId ?? rooms[0]) ?? task.createdAt
-  const total = task.recurrence.type === 'once' && !task.afterTaskId ? 7 * DAY : Math.max(DAY, deadline - ref)
+  const ref = isEventDriven(task) ? task.triggeredAt ?? now : lastFor(task, roomId ?? rooms[0]) ?? task.createdAt
+  const total = task.recurrence.type === 'once' && !isEventDriven(task) ? 7 * DAY : Math.max(DAY, deadline - ref)
   return Math.max(0, Math.min(1, (deadline - now) / total))
 }
 

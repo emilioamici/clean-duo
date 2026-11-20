@@ -1,12 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { AppDatabase, Member, Room, Settings, Task } from '../types'
+import type { AppDatabase, Automation, Member, Room, Settings, Task } from '../types'
+import { applyAutomationEvents } from '../lib/automations'
 import { applyTheme, getTheme, setTheme as setStoredTheme, type Theme } from '../lib/theme'
 import { createDemoDb, createEmptyDb } from '../lib/demo'
 import { uid } from '../lib/clean'
 import { mergeDb, sameContent } from '../lib/merge'
 import * as drive from '../services/googleDriveService'
 import { hasSession } from '../services/broker'
-import { PushHttpError, cancelTimer, currentSubscription, disablePush, enablePush, pushConfigured, pushSupported, refreshPush, scheduleReminders, scheduleTimer, sendPush } from '../services/push'
+import { PushHttpError, ackAutomationEvents, cancelTimer, deleteTuyaRule, pullAutomationEvents, registerTuyaRule, currentSubscription, disablePush, enablePush, pushConfigured, pushSupported, refreshPush, scheduleReminders, scheduleTimer, sendPush } from '../services/push'
 import { enqueue, flushQueue, type QueuedPush, type SendResult } from '../services/pushQueue'
 import { diffNotifications, mergeNotifications, pushTargets, type Notif } from '../lib/notifications'
 import { DEFAULT_REMINDER_TIME, buildReminders, dueNow, reminderText, validTime } from '../lib/reminders'
@@ -103,6 +104,12 @@ interface Ctx {
   enableNotifications: () => Promise<string | null>
   disableNotifications: () => Promise<void>
   sendTestPush: () => Promise<void>
+  // automazioni (dispositivi)
+  /** Crea o aggiorna un'automazione e la registra sul server; ritorna un errore da mostrare, se la registrazione non riesce. */
+  saveAutomation: (a: Omit<Automation, 'updatedAt' | 'lastFiredAt'> & { lastFiredAt?: number }) => Promise<string | null>
+  deleteAutomation: (id: string) => Promise<void>
+  /** Chiede al server se i dispositivi hanno segnalato qualcosa e lo applica. */
+  pullEvents: () => Promise<void>
   // dati
   upsertRoom: (r: Omit<Room, 'id' | 'updatedAt'> & { id?: string }) => void
   deleteRoom: (id: string) => void
@@ -250,6 +257,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }).catch(() => undefined)
   }, [])
 
+  const pullEventsRef = useRef<() => Promise<void>>(async () => undefined)
+  const lastPull = useRef(0)
   const runSync = useCallback(async () => {
     const m = metaRef.current
     if (m.mode !== 'drive' || !m.fileId) return
@@ -285,6 +294,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!done) throw new Error(t('Troppi conflitti: riprova tra poco.'))
       setStatus('idle'); setStatusMessage('')
       void flushPushQueue()
+      if (Date.now() - lastPull.current > 45_000) void pullEventsRef.current()
     } catch (e) {
       handleSyncError(e)
     } finally {
@@ -339,7 +349,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // un push arrivato mentre l'app è in primo piano: sincronizza subito
   useEffect(() => {
-    const onMsg = (e: MessageEvent) => { if (e.data?.type === 'cleanduo-push') void runSync() }
+    const onMsg = (e: MessageEvent) => { if (e.data?.type === 'cleanduo-push') { void runSync(); void pullEventsRef.current() } }
     navigator.serviceWorker?.addEventListener('message', onMsg)
     return () => navigator.serviceWorker?.removeEventListener('message', onMsg)
   }, [runSync])
@@ -643,6 +653,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notify(t('Invito inviato a {email}', { email: addr }))
   }
 
+  /* ---------- automazioni (dispositivi) ---------- */
+  const registerRule = async (a: Automation): Promise<void> => {
+    const tk = drive.currentToken()
+    const fid = metaRef.current.fileId
+    if (!pushConfigured() || !tk || !fid) throw new Error(t('Per collegare un dispositivo serve una casa su Drive, il server delle notifiche e l\'accesso a Google attivo.'))
+    const cur = dbRef.current
+    const task = cur.tasks.find((x) => x.id === a.taskId)
+    await registerTuyaRule(fid, tk, {
+      ruleId: a.id, deviceId: a.deviceId, code: a.code, op: a.op, value: a.value,
+      recipients: cur.members.map((m) => m.email).filter((e): e is string => !!e),
+      title: a.name, body: t('«{task}» è ora da fare.', { task: task?.name ?? a.name }),
+    })
+  }
+
+  const saveAutomation: Ctx['saveAutomation'] = async (a) => {
+    const full: Automation = { ...a, updatedAt: Date.now() }
+    // l'azione collegata resta «in attesa» finché il dispositivo non segnala
+    mutate((d) => ({
+      ...d,
+      automations: [...(d.automations ?? []).filter((x) => x.id !== a.id), full],
+      tasks: d.tasks.map((x) => (x.id === a.taskId ? { ...x, onEvent: a.id, updatedAt: Date.now() } : x.onEvent === a.id ? { ...x, onEvent: undefined, triggeredAt: null, updatedAt: Date.now() } : x)),
+    }))
+    try {
+      if (a.enabled) await registerRule(full)
+      else { const tk = drive.currentToken(); const fid = metaRef.current.fileId; if (tk && fid && pushConfigured()) await deleteTuyaRule(fid, tk, a.id) }
+      return null
+    } catch (e) { return e instanceof Error ? e.message : String(e) }
+  }
+
+  const deleteAutomation: Ctx['deleteAutomation'] = async (id) => {
+    const tk = drive.currentToken()
+    const fid = metaRef.current.fileId
+    if (tk && fid && pushConfigured()) await deleteTuyaRule(fid, tk, id).catch(() => undefined)
+    mutate((d) => ({
+      ...d,
+      automations: (d.automations ?? []).filter((x) => x.id !== id),
+      tasks: d.tasks.map((x) => (x.onEvent === id ? { ...x, onEvent: undefined, triggeredAt: null, updatedAt: Date.now() } : x)),
+      tombstones: tomb(d, [id]),
+    }))
+  }
+
+  const pulling = useRef(false)
+  const pullEvents: Ctx['pullEvents'] = async () => {
+    const tk = drive.currentToken()
+    const fid = metaRef.current.fileId
+    if (pulling.current || !tk || !fid || !pushConfigured() || !(dbRef.current.automations?.length)) return
+    pulling.current = true
+    try {
+      const events = await pullAutomationEvents(fid, tk)
+      if (events.length === 0) return
+      mutate((d) => applyAutomationEvents(d, events))
+      await ackAutomationEvents(fid, tk, events.map((e) => e.id))
+    } catch { /* si riprova al prossimo ciclo */ } finally { pulling.current = false; lastPull.current = Date.now() }
+  }
+
+  pullEventsRef.current = pullEvents
+
   /* ---------- notifiche di questo dispositivo ---------- */
   const enableNotifications: Ctx['enableNotifications'] = async () => {
     if (typeof Notification === 'undefined') throw new Error(t('Questo browser non supporta le notifiche di sistema. Su iPhone servono iOS 16.4+ e l\'app aggiunta alla schermata Home.'))
@@ -706,7 +773,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, config, setConfig, theme, setTheme, meId, me, setMeId, toast, notify,
     persistent, prefs, setPrefs, notifications, unread, markRead, markAllRead, clearNotifications, toastNotif, dismissToastNotif, centerOpen, setCenterOpen,
     enableNotifications, disableNotifications, sendTestPush,
-    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, deleteLog, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
+    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, deleteLog, saveAutomation, deleteAutomation, pullEvents, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
     demoSkipped, setDemoSkipped, offlineSkipped, setOfflineSkipped,
     syncNow, connect, reconnect, createHouse, joinHouse, shareWith, disconnect, resetDemo,
   }

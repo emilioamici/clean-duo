@@ -1,4 +1,4 @@
-import { BellRing, Check, Cloud, Copy, Database, ExternalLink, LogOut, Mail, Minus, Palette, Pencil, Plus, RefreshCw, RotateCcw, Share2, ShieldCheck, UserPlus, UserRound, Users } from 'lucide-react'
+import { BellRing, Zap, Check, Cloud, Copy, Database, ExternalLink, LogOut, Mail, Minus, Palette, Pencil, Plus, RefreshCw, RotateCcw, Share2, ShieldCheck, UserPlus, UserRound, Users } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import * as drive from '../services/googleDriveService'
 import { brokerAvailable } from '../services/broker'
@@ -13,9 +13,10 @@ import { NotificationBell, SyncPill } from './Chrome'
 import { AppearanceCard } from './AppearanceCard'
 import { MascotPeek } from './Mascots'
 import { NotificationsCard } from './NotificationsCard'
+import { AutomationsCard } from './AutomationsCard'
 import { Accordion, Avatar, PageHeader } from './ui'
 
-type SectionId = 'look' | 'house' | 'members' | 'drive' | 'notif' | 'data'
+type SectionId = 'look' | 'house' | 'members' | 'drive' | 'notif' | 'auto' | 'data'
 const OPEN_KEY = 'cleanduo:settingsOpen'
 const loadOpen = (): Partial<Record<SectionId, boolean>> => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}') } catch { return {} } }
 
@@ -104,6 +105,11 @@ export function SettingsView() {
 
         <Accordion title={t('Notifiche')} icon={<BellRing size={20} />} open={!!open.notif} onToggle={() => flip('notif')} summary={notifOn ? t('Attive su questo dispositivo') : t('Disattivate (solo la campanella)')}>
           <NotificationsCard />
+        </Accordion>
+
+        <Accordion title={t('Automazioni')} icon={<Zap size={20} />} open={!!open.auto} onToggle={() => flip('auto')}
+          summary={(db.automations?.length ?? 0) > 0 ? t('{n} dispositivi collegati', { n: db.automations!.length }) : t('Collega i dispositivi di casa')}>
+          <AutomationsCard />
         </Accordion>
 
         <Accordion title={t('Dati')} icon={<Database size={20} />} open={!!open.data} onToggle={() => flip('data')} summary={t('{a} azioni · {b} stanze', { a: db.tasks.length, b: db.rooms.length })}>
