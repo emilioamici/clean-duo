@@ -1,5 +1,6 @@
 import type { AppDatabase, Member, NotifyPrefs } from '../types'
 import { t } from '../i18n'
+import { taskRooms } from './rooms'
 
 export type NotifKind = 'done' | 'task' | 'member' | 'reminder'
 
@@ -53,7 +54,7 @@ export function changeEvents(prev: AppDatabase, next: AppDatabase): ChangeEvent[
       out.push({
         kind: 'done', key: `done:${l.id}`, actor: l.memberId, taskId: l.taskId, timer: l.timer, early: l.early,
         title: l.timer ? t('Il task «{task}» è finito', { task: l.taskName }) : t('{who} ha completato «{task}»', { who: who(l.memberId), task: l.taskName }),
-        body: [room(l.roomId), `+${l.stars} ⭐`].filter(Boolean).join(' · '),
+        body: [(l.roomIds ?? [l.roomId]).map(room).filter(Boolean).join(', '), `+${l.stars} ⭐`].filter(Boolean).join(' · '),
       })
     }
   }
@@ -65,7 +66,7 @@ export function changeEvents(prev: AppDatabase, next: AppDatabase): ChangeEvent[
       out.push({
         kind: 'task', key: `task:${x.id}`, actor: x.createdBy ?? null, taskId: x.id,
         title: t('{who} ha creato una nuova azione', { who: who(x.createdBy) }),
-        body: [x.name, room(x.roomId)].filter(Boolean).join(' · '),
+        body: [x.name, taskRooms(x).map(room).filter(Boolean).join(', ')].filter(Boolean).join(' · '),
       })
     }
   }

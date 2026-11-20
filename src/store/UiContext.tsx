@@ -22,7 +22,7 @@ interface UiCtx {
   openSwitcher: (o: boolean) => void
   celebration: CelebrationState
   /** Completa una task come membro corrente, con feedback aptico + animazione. */
-  complete: (taskId: string, origin?: { x: number; y: number }) => void
+  complete: (taskId: string, origin?: { x: number; y: number }, roomId?: string) => void
   /** «Completa ora» su un'azione in corso. */
   finish: (taskId: string, origin?: { x: number; y: number }) => void
   resumePending: (memberId: string) => void
@@ -44,38 +44,38 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const [memberSheet, openMemberSheet] = useState<{ id?: string } | null>(null)
   const [switcherOpen, openSwitcher] = useState(false)
   const [celebration, setCelebration] = useState<CelebrationState>(null)
-  const pending = useRef<{ taskId: string; origin?: { x: number; y: number } } | null>(null)
+  const pending = useRef<{ taskId: string; origin?: { x: number; y: number }; roomId?: string } | null>(null)
 
   const setTab = (t: TabId) => { setTabState(t); if (t !== 'rooms') setRoomId(null) }
   const openRoom = (id: string | null) => { setRoomId(id); if (id) setTabState('rooms') }
 
-  const doComplete = useCallback((taskId: string, memberId: string, origin?: { x: number; y: number }) => {
+  const doComplete = useCallback((taskId: string, memberId: string, origin?: { x: number; y: number }, roomId?: string) => {
     const task = app.db.tasks.find((x) => x.id === taskId)
     if (task?.durationMin) {
       // azione con durata: il tap la avvia; si completa da sola alla fine
       if (task.runningUntil) return
-      const until = app.startTimer(taskId, memberId)
+      const until = app.startTimer(taskId, memberId, roomId ? [roomId] : undefined)
       if (until) {
         try { navigator.vibrate?.(30) } catch { /* non supportato (iOS) */ }
         app.notify(t('«{task}» in corso: finisce alle {time}', { task: task.name, time: timeOfDay(until) }))
       }
       return
     }
-    const stars = app.completeTask(taskId, memberId)
+    const stars = app.completeTask(taskId, memberId, roomId ? [roomId] : undefined)
     if (!stars) return
     try { navigator.vibrate?.([18, 40, 24]) } catch { /* non supportato (iOS) */ }
     setCelebration({ key: Date.now(), stars, x: origin?.x ?? window.innerWidth / 2, y: origin?.y ?? window.innerHeight / 2 })
   }, [app])
 
-  const complete = useCallback((taskId: string, origin?: { x: number; y: number }) => {
+  const complete = useCallback((taskId: string, origin?: { x: number; y: number }, roomId?: string) => {
     const members = app.db.members
     const who = app.me ?? (members.length === 1 ? members[0] : null)
     if (!who) {
-      pending.current = { taskId, origin }
+      pending.current = { taskId, origin, roomId }
       openSwitcher(true)
       return
     }
-    doComplete(taskId, who.id, origin)
+    doComplete(taskId, who.id, origin, roomId)
   }, [app.db.members, app.me, doComplete])
 
   const finish = useCallback((taskId: string, origin?: { x: number; y: number }) => {
@@ -88,7 +88,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const resumePending = useCallback((memberId: string) => {
     const p = pending.current
     pending.current = null
-    if (p) doComplete(p.taskId, memberId, p.origin)
+    if (p) doComplete(p.taskId, memberId, p.origin, p.roomId)
   }, [doComplete])
 
   return (

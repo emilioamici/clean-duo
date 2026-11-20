@@ -15,7 +15,7 @@ export function undoCompletion(d: AppDatabase, logId: string, now = Date.now()):
       const rest = logs.filter((l) => l.taskId === x.id).map((l) => l.at)
       const before = log.prev !== undefined ? log.prev : rest.length ? Math.max(...rest) : null
       return {
-        ...x, lastCompletedAt: before, completions: Math.max(0, x.completions - 1), archived: false,
+        ...x, lastCompletedAt: before, roomDone: log.prevRoomDone ?? undefined, completions: Math.max(0, x.completions - 1), archived: false,
         triggeredAt: x.afterTaskId ? log.prevTrigger ?? x.triggeredAt : x.triggeredAt, updatedAt: now,
       }
     }

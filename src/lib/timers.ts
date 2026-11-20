@@ -1,6 +1,7 @@
 import type { AppDatabase, Task } from '../types'
 import { t } from '../i18n'
 import { triggerDependents } from './deps'
+import { applyCompletion, taskRooms } from './rooms'
 
 export const MAX_DURATION_MIN = 24 * 60
 export const DURATION_PRESETS = [15, 30, 45, 60, 90, 120, 180]
@@ -31,9 +32,9 @@ export const timeOfDay = (ts: number): string => new Date(ts).toLocaleTimeString
 export const timerLogId = (taskId: string, until: number): string => `l-run-${taskId}-${until}`
 
 /** Avvia il timer di un'azione (se ha una durata). */
-export function startRunning(task: Task, memberId: string, now = Date.now()): Task {
+export function startRunning(task: Task, memberId: string, now = Date.now(), rooms?: string[]): Task {
   const min = Math.min(MAX_DURATION_MIN, Math.max(1, task.durationMin ?? 0))
-  return { ...task, runningUntil: now + min * 60_000, runningBy: memberId, updatedAt: now }
+  return { ...task, runningUntil: now + min * 60_000, runningBy: memberId, runningRooms: rooms && rooms.length > 0 ? rooms : undefined, updatedAt: now }
 }
 
 function applyFinish(db: AppDatabase, items: Array<{ task: Task; end: number; early?: boolean }>, now: number): AppDatabase {
@@ -46,14 +47,14 @@ function applyFinish(db: AppDatabase, items: Array<{ task: Task; end: number; ea
     const by = x.runningBy && db.members.some((m) => m.id === x.runningBy) ? x.runningBy : db.members[0]?.id
     // lo stesso id anche se si finisce prima: la notifica del server (se arrivasse) ha lo stesso tag e non si duplica
     const id = timerLogId(x.id, x.runningUntil!)
+    const rooms = x.runningRooms && x.runningRooms.length > 0 ? x.runningRooms : taskRooms(x)
     if (by && !logs.some((l) => l.id === id)) {
-      logs.unshift({ id, taskId: x.id, taskName: x.name, roomId: x.roomId, memberId: by, stars: x.stars, at: it.end, timer: true, ...(it.early ? { early: true } : {}), prev: x.lastCompletedAt, prevTrigger: x.triggeredAt ?? null })
+      logs.unshift({
+        id, taskId: x.id, taskName: x.name, roomId: rooms[0], ...(taskRooms(x).length > 1 ? { roomIds: rooms } : {}), memberId: by, stars: x.stars, at: it.end, timer: true,
+        ...(it.early ? { early: true } : {}), prev: x.lastCompletedAt, prevTrigger: x.triggeredAt ?? null, prevRoomDone: x.roomDone ?? null,
+      })
     }
-    return {
-      ...x, lastCompletedAt: Math.max(x.lastCompletedAt ?? 0, it.end), completions: x.completions + 1,
-      archived: x.recurrence.type === 'once' && !x.afterTaskId, triggeredAt: x.afterTaskId ? null : x.triggeredAt,
-      runningUntil: null, runningBy: undefined, updatedAt: now,
-    }
+    return { ...applyCompletion(x, rooms, it.end, now), runningUntil: null, runningBy: undefined, runningRooms: undefined }
   })
   // chi dipende da un'azione a tempo diventa «da fare» quando il tempo è finito (o quando la si completa prima)
   for (const x of db.tasks) if (ids.has(x.id)) tasks = triggerDependents(tasks, x.id, endOf.get(x.id)!.end, now)

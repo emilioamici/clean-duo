@@ -288,3 +288,100 @@ describe('«Completa ora» su un\'azione in corso', () => {
     expect(back.logs.some((l) => l.id === done.logs[0].id)).toBe(false)
   })
 })
+
+describe('azioni in più stanze', () => {
+  const multi = () => {
+    const db = base()
+    const task = { ...db.tasks[0], id: 'mr', roomId: 'r1', roomIds: ['r1', 'r2', 'r3'], recurrence: { type: 'weekly' as const, every: 1 }, lastCompletedAt: null, completions: 0, roomDone: undefined, createdAt: Date.now() - 20 * 86_400_000, stars: 3 as const }
+    return { db: { ...db, tasks: [task, ...db.tasks.slice(1)], logs: [] as AppDatabase['logs'] }, task }
+  }
+
+  it('completamento rapido: tutte le stanze, stelle una sola volta', async () => {
+    const { applyCompletion } = await import('./rooms')
+    const { task } = multi()
+    const at = Date.now()
+    const out = applyCompletion(task, ['r1', 'r2', 'r3'], at)
+    expect(out.roomDone).toEqual({ r1: at, r2: at, r3: at })
+    expect(out.completions).toBe(1) // un solo completamento: le stelle (nel log) sono quelle dell'azione, non per stanza
+  })
+
+  it('dalla singola stanza: solo quella è fatta, le altre restano da fare', async () => {
+    const { applyCompletion } = await import('./rooms')
+    const { nextDue, urgencyOf, roomCleanliness } = await import('./clean')
+    const { db, task } = multi()
+    const at = Date.now()
+    const out = applyCompletion(task, ['r2'], at)
+    expect(out.roomDone).toEqual({ r2: at })
+    expect(urgencyOf(out, at, 'r2')).not.toBe('overdue')
+    expect(urgencyOf(out, at, 'r1')).toBe('overdue')
+    expect(urgencyOf(out, at)).toBe('overdue') // vista Oggi: conta la più urgente
+    expect(nextDue(out, 'r2')!).toBeGreaterThan(nextDue(out, 'r1')!)
+    const room = (id: string) => ({ id, name: id, icon: 'sofa', color: '#000', updatedAt: 0 })
+    const only = { ...db, tasks: [out] }
+    expect(roomCleanliness(room('r2'), only.tasks, at)).toBeGreaterThan(roomCleanliness(room('r1'), only.tasks, at))
+  })
+
+  it('una tantum: si archivia solo quando tutte le stanze sono fatte', async () => {
+    const { applyCompletion } = await import('./rooms')
+    const { task } = multi()
+    const once = { ...task, recurrence: { type: 'once' as const, every: 1 } }
+    const a = applyCompletion(once, ['r1'], Date.now())
+    expect(a.archived).toBe(false)
+    expect(applyCompletion(a, ['r2', 'r3'], Date.now() + 1000).archived).toBe(true)
+  })
+
+  it('annullare un completamento di una stanza ripristina lo stato per stanza', async () => {
+    const { applyCompletion } = await import('./rooms')
+    const { undoCompletion } = await import('./history')
+    const { db, task } = multi()
+    const at = Date.now()
+    const done = applyCompletion(task, ['r1'], at)
+    const log = { id: 'LR', taskId: 'mr', taskName: 'x', roomId: 'r1', roomIds: ['r1'], memberId: 'm1', stars: 3, at, prev: null, prevRoomDone: null }
+    const back = undoCompletion({ ...db, tasks: [done], logs: [log] }, 'LR')
+    expect(back.tasks[0].roomDone).toBeUndefined()
+    expect(back.tasks[0].lastCompletedAt).toBeNull()
+  })
+
+  it('eliminando una stanza le azioni con più stanze restano, quelle con una sola si eliminano', async () => {
+    const { removeRoom } = await import('./rooms')
+    const { task } = multi()
+    const single = { ...task, id: 'solo', roomId: 'r2', roomIds: undefined }
+    const out = removeRoom([task, single], 'r2')
+    expect(out.removed).toEqual(['solo'])
+    expect(out.tasks[0].roomIds).toEqual(['r1', 'r3'])
+    expect(removeRoom([task], 'r1').tasks[0].roomId).toBe('r2') // la principale passa alla successiva
+  })
+
+  it('una stanza aggiunta dopo parte «mai fatta» (da fare); togliendo stanze si torna allo stato semplice', async () => {
+    const { applyCompletion, setRooms } = await import('./rooms')
+    const { urgencyOf } = await import('./clean')
+    const { task } = multi()
+    const at = Date.now()
+    const done = applyCompletion(task, ['r1', 'r2', 'r3'], at)
+    const more = setRooms(done, ['r1', 'r2', 'r3', 'r4'])
+    expect(urgencyOf(more, at, 'r4')).toBe('overdue')
+    expect(urgencyOf(more, at, 'r1')).not.toBe('overdue')
+    const one = setRooms(done, ['r2'])
+    expect(one.roomIds).toBeUndefined()
+    expect(one.roomDone).toBeUndefined()
+    expect(one.lastCompletedAt).toBe(at)
+  })
+
+  it('due dispositivi che completano stanze diverse offline: nel merge restano entrambe fatte', async () => {
+    const { applyCompletion } = await import('./rooms')
+    const { db, task } = multi()
+    const at = Date.now()
+    const a = { ...db, tasks: [applyCompletion(task, ['r1'], at), ...db.tasks.slice(1)], logs: [{ id: 'a', taskId: 'mr', taskName: 'x', roomId: 'r1', roomIds: ['r1'], memberId: 'm1', stars: 3, at }] }
+    const b = { ...db, tasks: [applyCompletion(task, ['r2'], at + 600_000), ...db.tasks.slice(1)], logs: [{ id: 'b', taskId: 'mr', taskName: 'x', roomId: 'r2', roomIds: ['r2'], memberId: 'm2', stars: 3, at: at + 600_000 }] }
+    const m = mergeDb(a, b).tasks.find((x) => x.id === 'mr')!
+    expect(Object.keys(m.roomDone ?? {}).sort()).toEqual(['r1', 'r2'])
+  })
+
+  it('la notifica «completata» indica le stanze', () => {
+    const prev = base(); const next = clone(prev)
+    next.logs.unshift({ id: 'z', taskId: 't1', taskName: 'Pulire i vetri', roomId: 'r1', roomIds: ['r1', 'r3'], memberId: 'm2', stars: 3, at: Date.now() })
+    const n = diffNotifications(prev, next, 'm1')[0]
+    expect(n.body).toContain(', ')
+    expect(n.body).toContain('+3')
+  })
+})

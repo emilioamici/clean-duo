@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { nextDue, urgencyOf } from '../lib/clean'
 import { starsSince, weekStart } from '../lib/stats'
 import { isRunning } from '../lib/timers'
+import { inRoom } from '../lib/rooms'
 import { locale, t } from '../i18n'
 import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
@@ -27,7 +28,7 @@ export function TodayView() {
 
   const list = useMemo(() => {
     return active
-      .filter((x) => room === 'all' || x.roomId === room)
+      .filter((x) => room === 'all' || inRoom(x, room))
       .filter((x) => {
         const u = urgencyOf(x)
         return filter === 'all' || (filter === 'todo' ? u === 'overdue' || u === 'today' || isRunning(x) : (u === 'soon' || u === 'later') && !isRunning(x))

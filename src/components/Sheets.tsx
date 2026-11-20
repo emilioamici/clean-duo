@@ -8,6 +8,8 @@ import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
 import { RoomIcon, TASK_ICONS } from './icons'
 import { canDependOn } from '../lib/deps'
+import { lastFor, taskRooms } from '../lib/rooms'
+import { timeAgo } from '../lib/stats'
 import { DURATION_PRESETS, MAX_DURATION_MIN, durationLabel } from '../lib/timers'
 import { Avatar, Segmented, Sheet, Stars, Toggle } from './ui'
 
@@ -27,7 +29,10 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
   const { db, upsertTask, deleteTask } = useApp()
   const existing = db.tasks.find((t) => t.id === taskId)
   const [name, setName] = useState(existing?.name ?? '')
-  const [room, setRoom] = useState(existing?.roomId ?? roomId ?? db.rooms[0]?.id ?? '')
+  const [rooms, setRooms] = useState<string[]>(existing ? taskRooms(existing) : [roomId ?? db.rooms[0]?.id ?? ''])
+  const [notes, setNotes] = useState(existing?.notes ?? '')
+  const room = rooms[0] ?? ''
+  const { complete } = useUi()
   const [stars, setStars] = useState<Task['stars']>(existing?.stars ?? 2)
   const [type, setType] = useState<RecurrenceType>(existing?.recurrence.type ?? 'weekly')
   const [every, setEvery] = useState(existing?.recurrence.every ?? 1)
@@ -52,7 +57,7 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
     if (mode === 'member' && picked[0]) assignment = { mode: 'member', memberId: picked[0] }
     if (mode === 'rotation' && picked.length >= 2) assignment = { mode: 'rotation', memberIds: picked }
     upsertTask({
-      id: existing?.id, roomId: room, name: name.trim(), stars, assignment,
+      id: existing?.id, roomId: room, roomIds: rooms.length > 1 ? rooms : undefined, name: name.trim(), notes: notes.trim() || undefined, stars, assignment,
       recurrence: afterId !== null ? { type: 'daily', every: 1 } : { type, every: type === 'once' ? 1 : every, ...(type === 'weekly' && weekdays.length ? { weekdays } : {}) },
       icon: icon ?? undefined,
       afterTaskId: afterId ?? undefined,
@@ -66,12 +71,43 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
       <label className="label">{t('Nome')}</label>
       <input className="field" placeholder={t('Es. Pulire il forno')} value={name} onChange={(e) => setName(e.target.value)} autoFocus={!existing} />
 
-      <label className="label">{t('Stanza')}</label>
+      <label className="label">{t('Note')}</label>
+      <textarea className="field min-h-[5rem] resize-y" rows={3} maxLength={2000} placeholder={t('Istruzioni: come si fa, quando farla…')} value={notes} onChange={(e) => setNotes(e.target.value)} />
+
+      <label className="label">{rooms.length > 1 ? t('Stanze') : t('Stanza')}</label>
       <div className="-mx-1 flex flex-wrap gap-2 px-1">
-        {db.rooms.map((r) => (
-          <button key={r.id} type="button" className={`chip ${room === r.id ? 'chip-active' : ''}`} onClick={() => setRoom(r.id)}><RoomIcon name={r.icon} size={14} />{r.name}</button>
-        ))}
+        {db.rooms.map((r) => {
+          const on = rooms.includes(r.id)
+          // si possono scegliere più stanze; la prima scelta è quella principale. Almeno una resta sempre.
+          return (
+            <button key={r.id} type="button" className={`chip ${on ? 'chip-active' : ''}`} aria-pressed={on}
+              onClick={() => setRooms((cur) => (on ? (cur.length > 1 ? cur.filter((x) => x !== r.id) : cur) : [...cur, r.id]))}>
+              <RoomIcon name={r.icon} size={14} />{r.name}
+            </button>
+          )
+        })}
       </div>
+      {rooms.length > 1 && <p className="mt-1.5 px-1 text-xs text-muted">{t('Con più stanze, «completa» dalla pagina Oggi vale per tutte; dalla singola stanza solo per quella. Le stelle sono sempre quelle dell’azione.')}</p>}
+      {existing && rooms.length > 1 && taskRooms(existing).length > 1 && (
+        <div className="mt-2 rounded-2xl border border-line bg-bg/60 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{t('Completa per stanza')}</p>
+          <ul className="space-y-2">
+            {taskRooms(existing).filter((rid) => rooms.includes(rid)).map((rid) => {
+              const r = db.rooms.find((x) => x.id === rid)
+              if (!r) return null
+              const last = lastFor(existing, rid)
+              return (
+                <li key={rid} className="flex items-center gap-2">
+                  <RoomIcon name={r.icon} size={16} />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.name}</span>
+                  <span className="text-xs text-muted">{last ? timeAgo(last) : t('mai')}</span>
+                  <button type="button" className="glass-btn !px-3 !py-1.5 text-xs" onClick={() => { complete(existing.id, undefined, rid); onClose() }}>{t('Completa')}</button>
+                </li>
+              )
+            })}
+          </ul>
+        </div>
+      )}
 
       <label className="label">{t('Difficoltà (stelle)')}</label>
       <div className="glass flex justify-center rounded-2xl py-1"><Stars value={stars} size={30} onChange={setStars} /></div>

@@ -8,6 +8,8 @@ import { Fab, NotificationBell } from './Chrome'
 import { MascotImg, MascotPeek } from './Mascots'
 import { RoomIcon } from './icons'
 import { TaskRow } from './TaskRow'
+import { isRunning } from '../lib/timers'
+import { inRoom } from '../lib/rooms'
 import { CleanBar, PageHeader } from './ui'
 
 export function RoomsView() {
@@ -27,7 +29,7 @@ function RoomGrid() {
         <div className="grid grid-cols-2 gap-3">
           {db.rooms.map((r, i) => {
             const pct = roomCleanliness(r, db.tasks)
-            const due = db.tasks.filter((x) => x.roomId === r.id && ['overdue', 'today'].includes(urgencyOf(x))).length
+            const due = db.tasks.filter((x) => inRoom(x, r.id) && !isRunning(x) && ['overdue', 'today'].includes(urgencyOf(x, Date.now(), r.id))).length
             return (
               <motion.button
                 key={r.id}
@@ -65,8 +67,8 @@ function RoomDetail() {
   const room = db.rooms.find((r) => r.id === roomId)
   if (!room) return null
   const pct = roomCleanliness(room, db.tasks)
-  const tasks = db.tasks.filter((x) => x.roomId === room.id && !x.archived).sort((a, b) => (nextDue(a) ?? 8.64e15) - (nextDue(b) ?? 8.64e15))
-  const archived = db.tasks.filter((x) => x.roomId === room.id && x.archived).length
+  const tasks = db.tasks.filter((x) => inRoom(x, room.id) && !x.archived).sort((a, b) => (nextDue(a, room.id) ?? 8.64e15) - (nextDue(b, room.id) ?? 8.64e15))
+  const archived = db.tasks.filter((x) => inRoom(x, room.id) && x.archived).length
 
   return (
     <div>
@@ -88,7 +90,7 @@ function RoomDetail() {
         </div>
       </MascotPeek>
       <div className="mt-4 space-y-3">
-        <AnimatePresence mode="popLayout">{tasks.map((x) => <TaskRow key={x.id} task={x} showRoom={false} />)}</AnimatePresence>
+        <AnimatePresence mode="popLayout">{tasks.map((x) => <TaskRow key={x.id} task={x} showRoom={false} roomId={room.id} />)}</AnimatePresence>
         {tasks.length === 0 && (
           <div className="card flex flex-col items-center gap-2 px-4 py-6 text-center text-sm text-muted">
             <MascotImg kind="mochi" className="h-16 w-auto" />{t('Nessuna azione in questa stanza.')}
