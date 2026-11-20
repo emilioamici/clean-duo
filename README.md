@@ -113,6 +113,8 @@ altrimenti tocca **Sono io** accanto al tuo nome.
 - **Temi:** Modalità Mochi, Modalità Zenitsu o automatico.
 - **Notifiche:** una campanella nell'app avvisa quando un altro completa o crea un'azione o entra un nuovo membro; in più un promemoria giornaliero delle azioni da fare (orario a scelta). Con l'app in primo piano compaiono come avviso, con l'app chiusa servono il server delle notifiche e l'email nel profilo.
 - **Azioni con durata** (es. asciugatrice): nel form dell'azione si imposta la durata; il tap la avvia, resta «in corso» e alla fine si completa da sola (stelle a chi l'ha avviata) e arriva a tutti la notifica «Il task … è finito». Con l'app chiusa la notifica la invia il Worker (può arrivare con fino a 5 minuti di ritardo, il cron gira ogni 5 minuti); con l'app aperta è immediata.
+- **Dipendenze tra azioni**: un'azione può partire «dopo un'altra». Resta in attesa (in *Prossime*, con «In attesa di …») e finisce tra le cose da fare quando l'altra viene completata o, se è a tempo, quando il tempo è finito. Dopo averla completata torna in attesa del prossimo completamento. Esempio: Asciugatrice (a tempo) → Stendere i panni.
+- **Icona per azione**: ogni azione può avere un'icona propria (circa 55 tra cui scegliere); di default usa quella della stanza.
 - **Accesso persistente:** senza «Riconnetti» ogni ora.
 
 Notifiche con l'app chiusa e accesso persistente richiedono un piccolo server gratuito su Cloudflare Workers: vedi **[worker/README.md](worker/README.md)**. Senza, tutto il resto funziona.

@@ -132,3 +132,43 @@ describe('azioni con durata', () => {
     expect(pushTargets(prev, next, 'm1')).toEqual([])
   })
 })
+
+describe('dipendenze tra azioni', () => {
+  const mk = (over: Record<string, unknown>) => ({ ...createDemoDb().tasks[0], ...over }) as AppDatabase['tasks'][number]
+
+  it('completare la prima attiva la seconda, che torna in attesa quando viene completata', async () => {
+    const { triggerDependents, isWaiting } = await import('./deps')
+    const { nextDue } = await import('./clean')
+    const a = mk({ id: 'a' }); const b = mk({ id: 'b', afterTaskId: 'a', triggeredAt: null })
+    expect(isWaiting(b)).toBe(true)
+    expect(nextDue(b)).toBeNull()
+    const now = Date.now()
+    const after = triggerDependents([a, b], 'a', now, now)
+    expect(after[1].triggeredAt).toBe(now)
+    expect(isWaiting(after[1])).toBe(false)
+    expect(nextDue(after[1])).not.toBeNull()
+    // già attiva: non si rimanda
+    expect(triggerDependents(after, 'a', now + 5000, now + 5000)[1].triggeredAt).toBe(now)
+  })
+
+  it('se la prima è a tempo, la seconda parte quando il tempo è finito (all\'ora di fine)', async () => {
+    const { startRunning, finalizeTimers } = await import('./timers')
+    const db = base()
+    const a = { ...db.tasks[0], id: 'a', durationMin: 30 }
+    const b = { ...db.tasks[1], id: 'b', afterTaskId: 'a', triggeredAt: null, recurrence: { type: 'daily' as const, every: 1 } }
+    const started = startRunning(a, 'm1', Date.now())
+    const running = { ...db, tasks: [started, b] }
+    expect(finalizeTimers(running, started.runningUntil! - 1).tasks[1].triggeredAt).toBeNull() // il tempo non è ancora finito
+    const done = finalizeTimers(running, started.runningUntil! + 1000)
+    expect(done.tasks[1].triggeredAt).toBe(started.runningUntil)
+  })
+
+  it('niente cicli, e se la precedente sparisce il legame si toglie', async () => {
+    const { canDependOn, unlinkMissing } = await import('./deps')
+    const a = mk({ id: 'a' }); const b = mk({ id: 'b', afterTaskId: 'a' }); const c = mk({ id: 'c', afterTaskId: 'b' })
+    expect(canDependOn([a, b, c], 'a', 'a')).toBe(false)
+    expect(canDependOn([a, b, c], 'a', 'c')).toBe(false) // a -> c -> b -> a
+    expect(canDependOn([a, b, c], 'c', 'a')).toBe(true)
+    expect(unlinkMissing([b, c])[0].afterTaskId).toBeUndefined()
+  })
+})

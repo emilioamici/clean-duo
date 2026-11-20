@@ -39,6 +39,8 @@ function addMonths(ts: number, months: number): number {
 /** Prossima scadenza (ms) oppure null se una tantum archiviata. */
 export function nextDue(task: Task): number | null {
   if (task.archived) return null
+  // azione che parte dopo un'altra: «da fare» da quando l'altra è stata completata, altrimenti in attesa
+  if (task.afterTaskId) return task.triggeredAt ? startOfDay(task.triggeredAt) : null
   const { type, every, weekdays } = task.recurrence
   const n = Math.max(1, every || 1)
   const ref = task.lastCompletedAt ?? task.createdAt
@@ -103,8 +105,8 @@ export function taskCleanliness(task: Task, now = Date.now()): number {
   if (due === null) return 1
   // la scadenza è a inizio giornata: il "tempo utile" arriva a fine giornata
   const deadline = due + DAY
-  const ref = task.lastCompletedAt ?? task.createdAt
-  const total = task.recurrence.type === 'once' ? 7 * DAY : Math.max(DAY, deadline - ref)
+  const ref = task.afterTaskId ? task.triggeredAt ?? now : task.lastCompletedAt ?? task.createdAt
+  const total = task.recurrence.type === 'once' && !task.afterTaskId ? 7 * DAY : Math.max(DAY, deadline - ref)
   return Math.max(0, Math.min(1, (deadline - now) / total))
 }
 

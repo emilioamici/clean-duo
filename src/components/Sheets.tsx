@@ -6,7 +6,8 @@ import { t } from '../i18n'
 import { weekdayShort } from '../lib/clean'
 import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
-import { RoomIcon } from './icons'
+import { RoomIcon, TASK_ICONS } from './icons'
+import { canDependOn } from '../lib/deps'
 import { DURATION_PRESETS, MAX_DURATION_MIN, durationLabel } from '../lib/timers'
 import { Avatar, Segmented, Sheet, Stars, Toggle } from './ui'
 
@@ -32,12 +33,16 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
   const [every, setEvery] = useState(existing?.recurrence.every ?? 1)
   const [weekdays, setWeekdays] = useState<number[]>(existing?.recurrence.weekdays ?? [])
   const [mode, setMode] = useState<Assignment['mode']>(existing?.assignment.mode ?? 'anyone')
+  const [icon, setIcon] = useState<string | null>(existing?.icon ?? null)
+  const [afterId, setAfterId] = useState<string | null>(existing?.afterTaskId ?? null)
   const [duration, setDuration] = useState<number | null>(existing?.durationMin ?? null)
   const [picked, setPicked] = useState<string[]>(
     existing?.assignment.mode === 'member' ? [existing.assignment.memberId]
       : existing?.assignment.mode === 'rotation' ? existing.assignment.memberIds : [],
   )
 
+  const roomColor = db.rooms.find((r) => r.id === room)?.color ?? '#c9692a'
+  const options = db.tasks.filter((x) => !x.archived && x.id !== existing?.id && canDependOn(db.tasks, existing?.id, x.id))
   const toggle = (id: string) => setPicked((p) => (mode === 'member' ? [id] : p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
   const unit = { once: '', daily: t('giorni'), weekly: t('settimane'), monthly: t('mesi') }[type]
 
@@ -48,7 +53,9 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
     if (mode === 'rotation' && picked.length >= 2) assignment = { mode: 'rotation', memberIds: picked }
     upsertTask({
       id: existing?.id, roomId: room, name: name.trim(), stars, assignment,
-      recurrence: { type, every: type === 'once' ? 1 : every, ...(type === 'weekly' && weekdays.length ? { weekdays } : {}) },
+      recurrence: afterId !== null ? { type: 'daily', every: 1 } : { type, every: type === 'once' ? 1 : every, ...(type === 'weekly' && weekdays.length ? { weekdays } : {}) },
+      icon: icon ?? undefined,
+      afterTaskId: afterId ?? undefined,
       durationMin: duration ? Math.min(MAX_DURATION_MIN, Math.max(1, Math.round(duration))) : undefined,
     })
     onClose()
@@ -69,6 +76,30 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
       <label className="label">{t('Difficoltà (stelle)')}</label>
       <div className="glass flex justify-center rounded-2xl py-1"><Stars value={stars} size={30} onChange={setStars} /></div>
 
+      <label className="label">{t('Icona')}</label>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <button type="button" className={`chip !px-2.5 ${icon === null ? 'chip-active' : ''}`} onClick={() => setIcon(null)}>{t('Come la stanza')}</button>
+      </div>
+      <div className="mt-2 grid grid-cols-6 gap-2">
+        {TASK_ICONS.map((i) => (
+          <button key={i} type="button" aria-label={i} onClick={() => setIcon(i)} className={`flex h-11 items-center justify-center rounded-2xl border transition active:scale-90 ${icon === i ? 'border-transparent text-white' : 'border-line bg-bg/60'}`} style={icon === i ? { background: roomColor } : undefined}>
+            <RoomIcon name={i} size={20} />
+          </button>
+        ))}
+      </div>
+
+      <label className="label">{t('Quando parte')}</label>
+      <div className="rounded-2xl border border-line bg-bg/60 p-3">
+        <Toggle checked={afterId !== null} onChange={(v) => setAfterId(v ? options[0]?.id ?? null : null)} label={t('Dopo un’altra azione')} hint={options.length === 0 && afterId === null ? t('Crea prima un’altra azione da cui dipendere.') : t('Resta in attesa e va tra le cose da fare quando l’altra è completata (o, se a tempo, finita).')} />
+        {afterId !== null && (
+          <select className="field mt-2" value={afterId} onChange={(e) => setAfterId(e.target.value)} aria-label={t('Azione precedente')}>
+            {options.map((o) => <option key={o.id} value={o.id}>{`${db.rooms.find((r) => r.id === o.roomId)?.name ?? ''} · ${o.name}`}</option>)}
+          </select>
+        )}
+      </div>
+
+      {afterId === null && (
+        <>
       <label className="label">{t('Ricorrenza')}</label>
       <Segmented<RecurrenceType> value={type} onChange={setType} options={[{ id: 'once', label: t('Singola') }, { id: 'daily', label: t('Giorni') }, { id: 'weekly', label: t('Sett.') }, { id: 'monthly', label: t('Mesi') }]} />
       {type !== 'once' && (
@@ -89,6 +120,9 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
                 className={`chip !h-10 !w-10 justify-center !p-0 ${weekdays.includes(d) ? 'chip-active' : ''}`}>{weekdayShort(d).slice(0, 1).toUpperCase()}</button>
             ))}
           </div>
+        </>
+      )}
+
         </>
       )}
 

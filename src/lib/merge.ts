@@ -1,4 +1,5 @@
 import { t } from '../i18n'
+import { unlinkMissing } from './deps'
 import type { ActivityLog, AppDatabase, Task } from '../types'
 
 const DEDUPE_WINDOW = 2 * 60_000
@@ -62,7 +63,7 @@ export function mergeDb(local: AppDatabase, remote: AppDatabase): AppDatabase {
     settingsUpdatedAt: base.settingsUpdatedAt,
     members: mergeList(local.members, remote.members, tombstones),
     rooms: mergeList(local.rooms, remote.rooms, tombstones),
-    tasks: mergeList(local.tasks, remote.tasks, tombstones, combineTask),
+    tasks: unlinkMissing(mergeList(local.tasks, remote.tasks, tombstones, combineTask)),
     logs: mergeLogs(local.logs, remote.logs, tombstones),
     tombstones,
     lastUpdated: Math.max(local.lastUpdated, remote.lastUpdated),

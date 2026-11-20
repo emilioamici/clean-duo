@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion'
-import { Check, Play, Repeat, Timer, X } from 'lucide-react'
+import { Check, Link2, Play, Repeat, Timer, X } from 'lucide-react'
 import type { Task } from '../types'
 import { currentAssignee, dueLabel, recurrenceLabel, urgencyOf, type Urgency } from '../lib/clean'
 import { t } from '../i18n'
+import { isWaiting } from '../lib/deps'
 import { durationLabel, isRunning, remainingLabel, remainingMs, timeOfDay } from '../lib/timers'
 import { useNow } from '../lib/useNow'
 import { useApp } from '../store/AppContext'
@@ -23,6 +24,8 @@ export function TaskRow({ task, showRoom = true }: { task: Task; showRoom?: bool
   const { cancelTimer } = useApp()
   const now = useNow(15_000)
   const running = isRunning(task)
+  const before = task.afterTaskId ? db.tasks.find((x) => x.id === task.afterTaskId) : undefined
+  const waiting = isWaiting(task)
   const room = db.rooms.find((r) => r.id === task.roomId)
   const assignee = db.members.find((m) => m.id === currentAssignee(task))
   const u = urgencyOf(task)
@@ -37,9 +40,9 @@ export function TaskRow({ task, showRoom = true }: { task: Task; showRoom?: bool
       className="card flex items-center gap-3 p-3"
     >
       <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => openTaskSheet({ id: task.id })}>
-        {showRoom && room && (
+        {(showRoom || task.icon) && room && (
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white shadow-inner" style={{ background: `linear-gradient(135deg, ${room.color}, ${room.color}aa)` }}>
-            <RoomIcon name={room.icon} size={20} />
+            <RoomIcon name={task.icon ?? room.icon} size={20} />
           </span>
         )}
         <span className="min-w-0 flex-1">
@@ -47,13 +50,15 @@ export function TaskRow({ task, showRoom = true }: { task: Task; showRoom?: bool
           <span className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">
             {showRoom && room && <span className="truncate">{room.name}</span>}
             {showRoom && <span>·</span>}
-            <Repeat size={11} /> <span className="truncate">{recurrenceLabel(task)}</span>
+            <Repeat size={11} /> <span className="truncate">{task.afterTaskId ? t('Dopo «{task}»', { task: before?.name ?? '…' }) : recurrenceLabel(task)}</span>
           </span>
           <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
             {running ? (
               <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold text-brand">
                 <Timer size={11} />{t('In corso · finisce alle {time} ({left})', { time: timeOfDay(task.runningUntil!), left: remainingLabel(remainingMs(task, now)) })}
               </span>
+            ) : waiting ? (
+              <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-line/70 px-2 py-0.5 text-[11px] font-semibold text-muted"><Link2 size={11} />{t('In attesa di «{task}»', { task: before?.name ?? '…' })}</span>
             ) : (
               <span className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ${URGENCY_STYLE[u]}`}>{dueLabel(task)}</span>
             )}

@@ -47,6 +47,12 @@ export interface Task {
   lastCompletedAt: number | null
   /** Quante volte è stata completata (usato per la rotazione) */
   completions: number
+  /** Icona propria dell'azione (altrimenti quella della stanza) */
+  icon?: string
+  /** Parte quando l'azione con questo id viene completata (o, se a tempo, finisce) */
+  afterTaskId?: string
+  /** Quando l'azione precedente è stata completata: da allora questa è «da fare». Vuoto = in attesa */
+  triggeredAt?: number | null
   /** Durata in minuti: il tap avvia l'azione, che resta «in corso» e si completa da sola alla fine (es. asciugatrice) */
   durationMin?: number
   /** Fine prevista (ms) se è in corso, altrimenti assente */

@@ -318,4 +318,12 @@ export const EN: Record<string, string> = {
   "Il tap la avvia: resta «in corso» e si completa da sola alla fine, avvisando tutti.": "Tapping starts it: it stays “running” and completes by itself at the end, notifying everyone.",
   "Minuti": "Minutes",
   "Privacy": "Privacy",
+  "Come la stanza": "Same as the room",
+  "Quando parte": "When it starts",
+  "Dopo un’altra azione": "After another task",
+  "Crea prima un’altra azione da cui dipendere.": "Create another task first to depend on.",
+  "Resta in attesa e va tra le cose da fare quando l’altra è completata (o, se a tempo, finita).": "It waits, and moves to your to-do list when the other one is completed (or, if timed, finished).",
+  "Azione precedente": "Previous task",
+  "Dopo «{task}»": "After “{task}”",
+  "In attesa di «{task}»": "Waiting for “{task}”",
 }

@@ -12,6 +12,7 @@ import { diffNotifications, mergeNotifications, pushTargets, type Notif } from '
 import { DEFAULT_REMINDER_TIME, buildReminders, dueNow, reminderText, validTime } from '../lib/reminders'
 import { t } from '../i18n'
 import { finalizeTimers, startRunning, timerLogId } from '../lib/timers'
+import { triggerDependents, unlinkMissing } from '../lib/deps'
 import type { GoogleConfig, GoogleUser } from '../services/googleDriveService'
 
 type SyncStatus = 'demo' | 'idle' | 'syncing' | 'offline' | 'auth' | 'error'
@@ -101,7 +102,7 @@ interface Ctx {
   // dati
   upsertRoom: (r: Omit<Room, 'id' | 'updatedAt'> & { id?: string }) => void
   deleteRoom: (id: string) => void
-  upsertTask: (t: Omit<Task, 'id' | 'updatedAt' | 'createdAt' | 'lastCompletedAt' | 'completions' | 'archived' | 'runningUntil' | 'runningBy'> & { id?: string }) => void
+  upsertTask: (t: Omit<Task, 'id' | 'updatedAt' | 'createdAt' | 'lastCompletedAt' | 'completions' | 'archived' | 'runningUntil' | 'runningBy' | 'triggeredAt'> & { id?: string }) => void
   deleteTask: (id: string) => void
   completeTask: (taskId: string, memberId: string) => number
   /** Avvia l'azione con durata: resta «in corso» e si completa da sola alla fine. Ritorna l'ora di fine (ms). */
@@ -444,12 +445,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const deleteRoom: Ctx['deleteRoom'] = (id) => mutate((d) => {
     const taskIds = d.tasks.filter((t) => t.roomId === id).map((t) => t.id)
-    return { ...d, rooms: d.rooms.filter((r) => r.id !== id), tasks: d.tasks.filter((t) => t.roomId !== id), tombstones: tomb(d, [id, ...taskIds]) }
+    return { ...d, rooms: d.rooms.filter((r) => r.id !== id), tasks: unlinkMissing(d.tasks.filter((t) => t.roomId !== id)), tombstones: tomb(d, [id, ...taskIds]) }
   })
 
   const upsertTask: Ctx['upsertTask'] = (t) => mutate((d) => {
     const now = Date.now()
-    if (t.id && d.tasks.some((x) => x.id === t.id)) return { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, ...t, id: x.id, updatedAt: now } : x)) }
+    if (t.id && d.tasks.some((x) => x.id === t.id)) {
+      // se cambia l'azione da cui si dipende, si riparte «in attesa»
+      return { ...d, tasks: d.tasks.map((x) => (x.id === t.id ? { ...x, ...t, id: x.id, triggeredAt: t.afterTaskId === x.afterTaskId ? x.triggeredAt : null, updatedAt: now } : x)) }
+    }
     const task: Task = { ...t, id: t.id ?? uid('t'), createdAt: now, createdBy: meRef.current?.id, lastCompletedAt: null, completions: 0, archived: false, updatedAt: now }
     return { ...d, tasks: [...d.tasks, task] }
   })
@@ -457,7 +461,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteTask: Ctx['deleteTask'] = (id) => {
     const running = dbRef.current.tasks.find((x) => x.id === id)?.runningUntil
     if (running) cancelServerTimer(id, running)
-    mutate((d) => ({ ...d, tasks: d.tasks.filter((x) => x.id !== id), tombstones: tomb(d, [id]) }))
+    mutate((d) => ({ ...d, tasks: unlinkMissing(d.tasks.filter((x) => x.id !== id)), tombstones: tomb(d, [id]) }))
   }
 
   /** Il server non deve più notificare la fine di un timer annullato o eliminato. */
@@ -488,9 +492,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const now = Date.now()
     mutate((d) => ({
       ...d,
-      tasks: d.tasks.map((t) => t.id === taskId
-        ? { ...t, lastCompletedAt: now, completions: t.completions + 1, archived: t.recurrence.type === 'once', updatedAt: now }
-        : t),
+      // chi dipende da questa azione diventa «da fare»; se questa dipendeva da un'altra, torna in attesa
+      tasks: triggerDependents(d.tasks.map((x) => x.id === taskId
+        ? { ...x, lastCompletedAt: now, completions: x.completions + 1, archived: x.recurrence.type === 'once' && !x.afterTaskId, triggeredAt: x.afterTaskId ? null : x.triggeredAt, updatedAt: now }
+        : x), taskId, now, now),
       logs: [{ id: uid('l'), taskId, taskName: task.name, roomId: task.roomId, memberId, stars: task.stars, at: now }, ...d.logs].slice(0, 2000),
     }))
     return task.stars

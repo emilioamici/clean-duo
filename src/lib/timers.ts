@@ -1,5 +1,6 @@
 import type { AppDatabase, Task } from '../types'
 import { t } from '../i18n'
+import { triggerDependents } from './deps'
 
 export const MAX_DURATION_MIN = 24 * 60
 export const DURATION_PRESETS = [15, 30, 45, 60, 90, 120, 180]
@@ -43,7 +44,7 @@ export function finalizeTimers(db: AppDatabase, now = Date.now()): AppDatabase {
   const due = db.tasks.filter((x) => x.runningUntil && x.runningUntil <= now)
   if (due.length === 0) return db
   const logs = [...db.logs]
-  const tasks = db.tasks.map((x) => {
+  let tasks = db.tasks.map((x) => {
     if (!x.runningUntil || x.runningUntil > now) return x
     const until = x.runningUntil
     const by = x.runningBy && db.members.some((m) => m.id === x.runningBy) ? x.runningBy : db.members[0]?.id
@@ -53,8 +54,11 @@ export function finalizeTimers(db: AppDatabase, now = Date.now()): AppDatabase {
     }
     return {
       ...x, lastCompletedAt: Math.max(x.lastCompletedAt ?? 0, until), completions: x.completions + 1,
-      archived: x.recurrence.type === 'once', runningUntil: null, runningBy: undefined, updatedAt: now,
+      archived: x.recurrence.type === 'once' && !x.afterTaskId, triggeredAt: x.afterTaskId ? null : x.triggeredAt,
+      runningUntil: null, runningBy: undefined, updatedAt: now,
     }
   })
+  // chi dipende da un'azione a tempo diventa «da fare» quando il tempo è finito
+  for (const x of due) tasks = triggerDependents(tasks, x.id, x.runningUntil!, now)
   return { ...db, tasks, logs: logs.slice(0, 2000) }
 }
