@@ -111,14 +111,17 @@ export function NotificationBell() {
   const { unread, setCenterOpen, mode } = useApp()
   if (mode === 'demo') return null
   return (
-    <button className="glass-btn relative !p-2.5" aria-label={unread ? t('Notifiche ({n} non lette)', { n: unread }) : t('Notifiche')} onClick={() => setCenterOpen(true)}>
-      <Bell size={20} />
-      {unread > 0 && <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-exp px-1 text-[10px] font-bold text-onbrand">{unread > 9 ? '9+' : unread}</span>}
-    </button>
+    // il pallino sta fuori dal bottone: `.glass-btn` ha overflow hidden (per il riflesso) e lo taglierebbe
+    <span className="relative inline-flex">
+      <button className="glass-btn !p-2.5" aria-label={unread ? t('Notifiche ({n} non lette)', { n: unread }) : t('Notifiche')} onClick={() => setCenterOpen(true)}>
+        <Bell size={20} />
+      </button>
+      {unread > 0 && <span aria-hidden className="pointer-events-none absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-exp px-1 text-[10px] font-bold leading-none text-onbrand ring-2 ring-bg">{unread > 9 ? '9+' : unread}</span>}
+    </span>
   )
 }
 
-const NOTIF_ICON = { done: CheckCheck, task: ClipboardPlus, member: UserPlus, reminder: BellRing } as const
+const NOTIF_ICON = { done: CheckCheck, task: ClipboardPlus, member: UserPlus, reminder: BellRing, todo: BellRing } as const
 
 function NotifIcon({ n }: { n: Notif }) {
   const I = NOTIF_ICON[n.kind]

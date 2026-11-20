@@ -60,6 +60,8 @@ export interface Task {
   afterTaskId?: string
   /** Parte quando lo segnala un'automazione (id): in attesa finché il dispositivo non lo segnala */
   onEvent?: string
+  /** Avvisa i membri quando l'azione passa da «in attesa» a «da fare» (solo azioni legate a un'altra azione o a un dispositivo) */
+  notifyWhenTodo?: boolean
   /** Quando l'azione precedente è stata completata: da allora questa è «da fare». Vuoto = in attesa */
   triggeredAt?: number | null
   /** Durata in minuti: il tap avvia l'azione, che resta «in corso» e si completa da sola alla fine (es. asciugatrice) */

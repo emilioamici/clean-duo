@@ -468,7 +468,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ...d, rooms: d.rooms.filter((r) => r.id !== id), tasks: unlinkMissing(tasks), tombstones: tomb(d, [id, ...removed]) }
   })
 
-  const upsertTask: Ctx['upsertTask'] = (t) => mutate((d) => {
+  const upsertTask: Ctx['upsertTask'] = (t) => {
+    // se cambia il flag «avvisa» su un'azione da dispositivo, il server va aggiornato (è lui a mandare quella notifica)
+    const old = t.id ? dbRef.current.tasks.find((x) => x.id === t.id) : undefined
+    const auto = old?.onEvent ? (dbRef.current.automations ?? []).find((a) => a.id === old.onEvent) : undefined
+    saveTask(t)
+    if (auto?.enabled && !!old?.notifyWhenTodo !== !!t.notifyWhenTodo) {
+      const upd: Automation = { ...auto }
+      queueMicrotask(() => { void registerRule(upd).catch(() => undefined) })
+    }
+  }
+  const saveTask: Ctx['upsertTask'] = (t) => mutate((d) => {
     const now = Date.now()
     if (t.id && d.tasks.some((x) => x.id === t.id)) {
       // se cambia l'azione da cui si dipende, si riparte «in attesa»
@@ -662,7 +672,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const task = cur.tasks.find((x) => x.id === a.taskId)
     await registerTuyaRule(fid, tk, {
       ruleId: a.id, deviceId: a.deviceId, code: a.code, op: a.op, value: a.value,
-      recipients: cur.members.map((m) => m.email).filter((e): e is string => !!e),
+      // il server avvisa solo se l'azione collegata ha il flag «avvisa quando diventa da fare»
+      recipients: task?.notifyWhenTodo ? cur.members.map((m) => m.email).filter((e): e is string => !!e) : [],
       title: a.name, body: t('«{task}» è ora da fare.', { task: task?.name ?? a.name }),
     })
   }
