@@ -59,6 +59,9 @@ Le credenziali Google si inseriscono dall'app (**Impostazioni → Google Drive**
 4. **Utenti di test**: finché l'app è in modalità *Testing* aggiungi le email Google di **tutti i membri della casa**.
    (In alternativa premi *Pubblica app*: con solo `drive.file` non serve la verifica di Google.)
 
+### 3b. Pubblicare l'app (consigliato)
+Se resta in *Testing* i token di rinnovo scadono dopo 7 giorni. In *Google Auth Platform → Branding* compila: nome app, email di assistenza, **home page** `https://<utente>.github.io/<repo>/`, **informativa sulla privacy** `https://<utente>.github.io/<repo>/privacy.html` (inclusa nell'app), email dello sviluppatore. Poi *Pubblico → Pubblica app*. Con il solo scope `drive.file` non serve la verifica di Google.
+
 ### 4. Ottieni il Client ID
 1. **Credenziali → Crea credenziali → ID client OAuth**.
 2. Tipo applicazione: **Applicazione web**.
