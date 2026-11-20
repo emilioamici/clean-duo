@@ -20,7 +20,7 @@ const URGENCY_STYLE: Record<Urgency, string> = {
 
 export function TaskRow({ task, showRoom = true }: { task: Task; showRoom?: boolean }) {
   const { db } = useApp()
-  const { complete, openTaskSheet } = useUi()
+  const { complete, finish, openTaskSheet } = useUi()
   const { cancelTimer } = useApp()
   const now = useNow(15_000)
   const running = isRunning(task)
@@ -69,14 +69,27 @@ export function TaskRow({ task, showRoom = true }: { task: Task; showRoom?: bool
       </button>
       {assignee && <Avatar member={assignee} size={28} />}
       {running ? (
-        <motion.button
-          whileTap={{ scale: 0.85 }}
-          onClick={() => { if (window.confirm(t('Annullare «{task}»? Non verrà completata.', { task: task.name }))) cancelTimer(task.id) }}
-          className="glass-btn !h-12 !w-12 shrink-0 !p-0 text-brand"
-          aria-label={t('Annulla {name}', { name: task.name })}
-        >
-          <X size={22} strokeWidth={2.6} />
-        </motion.button>
+        <span className="flex shrink-0 items-center gap-2">
+          <motion.button
+            whileTap={{ scale: 0.85 }}
+            onClick={() => { if (window.confirm(t('Annullare «{task}»? Non verrà completata.', { task: task.name }))) cancelTimer(task.id) }}
+            className="glass-btn !h-10 !w-10 !p-0 text-muted"
+            aria-label={t('Annulla {name}', { name: task.name })}
+          >
+            <X size={18} strokeWidth={2.6} />
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.82 }}
+            onClick={(e) => {
+              const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+              finish(task.id, { x: r.left + r.width / 2, y: r.top + r.height / 2 })
+            }}
+            className="glass-btn btn-primary !h-12 !w-12 !p-0"
+            aria-label={t('Completa ora {name}', { name: task.name })}
+          >
+            <Check size={24} strokeWidth={3} />
+          </motion.button>
+        </span>
       ) : (
         <motion.button
           whileTap={{ scale: 0.82 }}

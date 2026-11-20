@@ -23,6 +23,8 @@ interface UiCtx {
   celebration: CelebrationState
   /** Completa una task come membro corrente, con feedback aptico + animazione. */
   complete: (taskId: string, origin?: { x: number; y: number }) => void
+  /** «Completa ora» su un'azione in corso. */
+  finish: (taskId: string, origin?: { x: number; y: number }) => void
   resumePending: (memberId: string) => void
 }
 
@@ -76,6 +78,13 @@ export function UiProvider({ children }: { children: ReactNode }) {
     doComplete(taskId, who.id, origin)
   }, [app.db.members, app.me, doComplete])
 
+  const finish = useCallback((taskId: string, origin?: { x: number; y: number }) => {
+    const stars = app.finishTimer(taskId)
+    if (!stars) return
+    try { navigator.vibrate?.([18, 40, 24]) } catch { /* non supportato (iOS) */ }
+    setCelebration({ key: Date.now(), stars, x: origin?.x ?? window.innerWidth / 2, y: origin?.y ?? window.innerHeight / 2 })
+  }, [app])
+
   const resumePending = useCallback((memberId: string) => {
     const p = pending.current
     pending.current = null
@@ -83,7 +92,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   }, [doComplete])
 
   return (
-    <Ctx.Provider value={{ tab, setTab, roomId, openRoom, taskSheet, openTaskSheet, roomSheet, openRoomSheet, memberSheet, openMemberSheet, switcherOpen, openSwitcher, celebration, complete, resumePending }}>
+    <Ctx.Provider value={{ tab, setTab, roomId, openRoom, taskSheet, openTaskSheet, roomSheet, openRoomSheet, memberSheet, openMemberSheet, switcherOpen, openSwitcher, celebration, complete, finish, resumePending }}>
       {children}
     </Ctx.Provider>
   )

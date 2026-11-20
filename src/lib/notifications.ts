@@ -25,6 +25,8 @@ export interface ChangeEvent {
   taskId?: string
   /** completata da sola a fine durata: il server la notifica a tutti, anche a chi l'ha avviata */
   timer?: boolean
+  /** completata prima della scadenza: il server non la notificherà (timer annullato), quindi la inviamo noi */
+  early?: boolean
   title: string
   body: string
 }
@@ -49,7 +51,7 @@ export function changeEvents(prev: AppDatabase, next: AppDatabase): ChangeEvent[
   if (logs.length <= MASS_LIMIT) {
     for (const l of logs) {
       out.push({
-        kind: 'done', key: `done:${l.id}`, actor: l.memberId, taskId: l.taskId, timer: l.timer,
+        kind: 'done', key: `done:${l.id}`, actor: l.memberId, taskId: l.taskId, timer: l.timer, early: l.early,
         title: l.timer ? t('Il task «{task}» è finito', { task: l.taskName }) : t('{who} ha completato «{task}»', { who: who(l.memberId), task: l.taskName }),
         body: [room(l.roomId), `+${l.stars} ⭐`].filter(Boolean).join(' · '),
       })
@@ -110,7 +112,7 @@ export interface PushTarget { event: ChangeEvent; email: string; memberId: strin
 export function pushTargets(prev: AppDatabase, next: AppDatabase, me: string): PushTarget[] {
   const out: PushTarget[] = []
   for (const e of changeEvents(prev, next)) {
-    if (e.timer) continue // il fine-durata lo invia il server a tutti all'ora giusta (vedi scheduleTimer)
+    if (e.timer && !e.early) continue // il fine-durata lo invia il server a tutti all'ora giusta (vedi scheduleTimer)
     if (e.actor !== null && e.actor !== me) continue // l'ha fatto un altro: ci pensa il suo dispositivo
     for (const m of next.members) {
       if (m.id === me || m.id === e.subject || !m.email) continue

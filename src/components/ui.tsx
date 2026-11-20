@@ -89,7 +89,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
           <motion.div className="absolute inset-0 bg-ink/30 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.div
             className="glass-strong relative z-10 flex max-h-[92%] w-full max-w-md flex-col rounded-b-none"
-            initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+            initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '100%', opacity: 0 }}
             transition={{ type: 'spring', stiffness: 380, damping: 38 }}
             drag="y" dragControls={controls} dragListener={false} dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 0.6 }}
             onDragEnd={(_, i) => { if (i.offset.y > 120 || i.velocity.y > 600) onClose() }}

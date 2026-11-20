@@ -247,3 +247,44 @@ describe('annullare un completamento dalla cronologia', () => {
     expect(mergeDb(a, b).tasks.find((x) => x.id === 't1')!.lastCompletedAt).toBe(at + 600_000)
   })
 })
+
+describe('«Completa ora» su un\'azione in corso', () => {
+  const running = async () => {
+    const { startRunning } = await import('./timers')
+    const db = base()
+    const started = startRunning({ ...db.tasks[0], id: 'tm', durationMin: 60 }, 'm1', Date.now())
+    const dep = { ...db.tasks[1], id: 'next', afterTaskId: 'tm', triggeredAt: null, recurrence: { type: 'daily' as const, every: 1 } }
+    return { db: { ...db, tasks: [started, dep] }, started }
+  }
+
+  it('completa subito: stelle a chi l\'ha avviata, non più in corso, dipendenti attivati adesso', async () => {
+    const { finishEarly } = await import('./timers')
+    const { db, started } = await running()
+    const now = Date.now() + 5 * 60_000
+    const out = finishEarly(db, 'tm', now)
+    expect(out.tasks[0].runningUntil).toBeNull()
+    expect(out.tasks[0].lastCompletedAt).toBe(now)
+    expect(out.logs[0]).toMatchObject({ taskId: 'tm', memberId: 'm1', at: now, timer: true, early: true })
+    expect(out.tasks[1].triggeredAt).toBe(now)
+    expect(now).toBeLessThan(started.runningUntil!) // davvero prima della fine
+    expect(finishEarly(out, 'tm', now + 1000)).toBe(out) // non si ripete
+  })
+
+  it('avvisa gli altri subito (il timer del server verrà annullato) e anche chi l\'ha avviata in app', async () => {
+    const { finishEarly } = await import('./timers')
+    const { db } = await running()
+    const out = finishEarly(db, 'tm', Date.now() + 1000)
+    expect(pushTargets(db, out, 'm1').map((t) => t.email)).toEqual(['m2@example.com'])
+    expect(diffNotifications(db, out, 'm1')).toHaveLength(1)
+  })
+
+  it('l\'annullamento dalla cronologia riporta l\'azione com\'era e i dipendenti in attesa', async () => {
+    const { finishEarly } = await import('./timers')
+    const { undoCompletion } = await import('./history')
+    const { db } = await running()
+    const done = finishEarly(db, 'tm', Date.now() + 1000)
+    const back = undoCompletion(done, done.logs[0].id)
+    expect(back.tasks[1].triggeredAt).toBeNull()
+    expect(back.logs.some((l) => l.id === done.logs[0].id)).toBe(false)
+  })
+})
