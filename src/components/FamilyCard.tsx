@@ -1,4 +1,4 @@
-import { Check, Crown, ExternalLink, FolderOpen, Mail, Minus, Pencil, Plus, UserPlus } from 'lucide-react'
+import { Check, Copy, Crown, ExternalLink, FolderOpen, Mail, Minus, Pencil, Plus, UserPlus } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import * as drive from '../services/googleDriveService'
 import { t } from '../i18n'
@@ -27,6 +27,7 @@ export function FamilyCard() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [info, setInfo] = useState('')
+  const [copied, setCopied] = useState(false)
   const [perms, setPerms] = useState<drive.DrivePermission[]>([])
   const inDrive = mode === 'drive' && !!fileId
 
@@ -120,6 +121,16 @@ export function FamilyCard() {
         </Box>
       ) : (
         <p className="rounded-xl bg-bg/60 p-3 text-xs text-muted">{t('Solo il capofamiglia ({owner}) può invitare nuovi membri.', { owner })}</p>
+      )}
+      {inDrive && fileId && (
+        <Box>
+          <label className="label !mt-0">{t('ID famiglia')}</label>
+          <div className="flex gap-2">
+            <input readOnly className="field font-mono !text-xs" value={fileId} onFocus={(e) => e.currentTarget.select()} />
+            <button className="glass-btn !px-3" aria-label={t('Copia ID')} onClick={() => { void navigator.clipboard?.writeText(fileId); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>{copied ? <Check size={16} /> : <Copy size={16} />}</button>
+          </div>
+          <p className="mt-1.5 px-1 text-xs text-muted">{t('Il codice da dare a chi entra: dopo l’invito lo incolla all’accesso come «ID famiglia».')}</p>
+        </Box>
       )}
       {err && <p className="rounded-xl bg-exp/10 p-3 text-sm text-exp">{err}</p>}
       {info && <p className="flex items-center gap-2 rounded-xl bg-inc/10 p-3 text-sm text-inc"><Check size={16} className="shrink-0" />{info}</p>}

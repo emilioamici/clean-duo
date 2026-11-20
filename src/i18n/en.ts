@@ -1,5 +1,13 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "Il codice da dare a chi entra: dopo l’invito lo incolla all’accesso come «ID famiglia».": "The code to give to whoever joins: after the invitation they paste it at sign-in as “Family ID”.",
+  "Non riesco ad aprire la casa: controlla l’ID e che ti abbia invitato con questo account Google.": "I can’t open the house: check the ID and that you were invited with this Google account.",
+  "Al primo accesso Google può chiederti di confermare il file della casa con un tocco: serve a dare a Clean Duo il permesso di aprirlo.": "On first sign-in Google may ask you to confirm the house file with a tap: this gives Clean Duo permission to open it.",
+  "Entra": "Join",
+  "ID famiglia": "Family ID",
+  "Chi ha creato la casa ti manda il suo ID famiglia (lo trova in Impostazioni → Casa e membri): incollalo qui.": "Whoever created the house sends you their family ID (found in Settings → House and members): paste it here.",
+  "Entra in una casa con l’ID famiglia": "Join a house with the family ID",
+  "Ti invito nella casa «{name}» su Clean Duo. Accedi a Clean Duo con questo account Google e incolla questo ID famiglia: {id}. Oppure apri direttamente il link: {link}": "I’m inviting you to the house “{name}” on Clean Duo. Sign in to Clean Duo with this Google account and paste this family ID: {id}. Or open the link directly: {link}",
   "Su richiesta": "On demand",
   "Nessuna scadenza ripetuta: resta sempre nella stanza e la puoi rifare quando serve.": "No repeating due date: it always stays in the room and you can redo it whenever you need.",
   "Ti invito nella casa «{name}» su Clean Duo. Apri questo link e accedi con questo account Google: il database ti verrà collegato in automatico. {link}": "I’m inviting you to the house “{name}” on Clean Duo. Open this link and sign in with this Google account: the database will be linked automatically. {link}",
