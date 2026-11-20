@@ -62,7 +62,7 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
     upsertTask({
       id: existing?.id, roomId: room, roomIds: rooms.length > 1 ? rooms : undefined, name: name.trim(), notes: notes.trim() || undefined, stars, assignment,
       onEvent: eventId ?? undefined,
-      notifyWhenTodo: (afterId !== null || eventId) && notifyTodo ? true : undefined,
+      notifyWhenTodo: notifyTodo ? true : undefined,
       recurrence: afterId !== null || eventId ? { type: 'daily', every: 1 } : { type, every: type === 'once' ? 1 : every, ...(type === 'weekly' && weekdays.length ? { weekdays } : {}) },
       icon: icon ?? undefined,
       afterTaskId: afterId ?? undefined,
@@ -143,9 +143,7 @@ function TaskForm({ taskId, roomId, onClose }: { taskId?: string; roomId?: strin
 
         </>
       )}
-      {(afterId !== null || eventId) && (
-        <div className="mt-3"><Toggle checked={notifyTodo} onChange={setNotifyTodo} label={t('Avvisa quando diventa da fare')} hint={t('Tutti i membri ricevono una notifica quando l’azione esce dall’attesa.')} /></div>
-      )}
+      <div className="mt-3"><Toggle checked={notifyTodo} onChange={setNotifyTodo} label={t('Avvisa quando diventa da fare')} hint={afterId !== null || eventId ? t('Tutti i membri ricevono una notifica quando l’azione esce dall’attesa.') : t('Notifica alle 8 del mattino del giorno in cui scade (serve avere attive le notifiche).')} /></div>
       {eventName && <p className="mt-2 rounded-xl bg-brand/10 p-3 text-sm text-brand">{t('Parte quando lo segnala il dispositivo «{name}» (si gestisce da Impostazioni → Automazioni).', { name: eventName })}</p>}
       {afterId === null && !eventId && (
         <>
