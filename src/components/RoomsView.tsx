@@ -65,7 +65,7 @@ function RoomDetail() {
   const room = db.rooms.find((r) => r.id === roomId)
   if (!room) return null
   const pct = roomCleanliness(room, db.tasks)
-  const tasks = db.tasks.filter((x) => x.roomId === room.id && !x.archived).sort((a, b) => (nextDue(a) ?? 0) - (nextDue(b) ?? 0))
+  const tasks = db.tasks.filter((x) => x.roomId === room.id && !x.archived).sort((a, b) => (nextDue(a) ?? 8.64e15) - (nextDue(b) ?? 8.64e15))
   const archived = db.tasks.filter((x) => x.roomId === room.id && x.archived).length
 
   return (

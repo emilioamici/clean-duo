@@ -85,10 +85,10 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   return (
     <AnimatePresence>
       {open && (
-        <div className="absolute inset-0 z-50 flex items-end">
+        <div className="fixed inset-0 z-50 flex items-end justify-center md:absolute">
           <motion.div className="absolute inset-0 bg-ink/30 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.div
-            className="glass-strong relative z-10 flex max-h-[92%] w-full flex-col rounded-b-none"
+            className="glass-strong relative z-10 flex max-h-[92%] w-full max-w-md flex-col rounded-b-none"
             initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
             transition={{ type: 'spring', stiffness: 380, damping: 38 }}
             drag="y" dragControls={controls} dragListener={false} dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 0.6 }}

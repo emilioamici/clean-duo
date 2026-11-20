@@ -1,4 +1,4 @@
-import { BarChart3, Crown, Gift, History, Star, Target } from 'lucide-react'
+import { BarChart3, Crown, Gift, History, Star, Target, Undo2 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { DAY } from '../lib/clean'
 import { monthStart, starsSince, timeAgo, weekStart, weeklySeries } from '../lib/stats'
@@ -15,7 +15,7 @@ const OPEN_KEY = 'cleanduo:rankingOpen'
 const loadOpen = (): Partial<Record<Section, boolean>> => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{"goal":true}') } catch { return {} } }
 
 export function RankingView() {
-  const { db } = useApp()
+  const { db, deleteLog } = useApp()
   const [period, setPeriod] = useState<Period>('week')
   const [open, setOpen] = useState(loadOpen)
   const flip = (k: Section) => setOpen((o) => { const n = { ...o, [k]: !o[k] }; try { localStorage.setItem(OPEN_KEY, JSON.stringify(n)) } catch { /* noop */ } return n })
@@ -131,6 +131,10 @@ export function RankingView() {
                     <p className="flex items-center gap-1 text-xs text-muted">{r && <RoomIcon name={r.icon} size={11} />}{r?.name ?? t('Stanza rimossa')} · {timeAgo(l.at)}</p>
                   </div>
                   <span className="flex shrink-0 items-center gap-0.5 text-sm font-bold">+{l.stars}<Star size={13} className="fill-brand text-brand" /></span>
+                  <button className="glass-btn !p-2 text-muted" aria-label={t('Annulla il completamento di {task}', { task: l.taskName })}
+                    onClick={() => { if (window.confirm(t('Annullare il completamento di «{task}»? Le stelle si tolgono e l’azione torna da fare.', { task: l.taskName }))) deleteLog(l.id) }}>
+                    <Undo2 size={15} />
+                  </button>
                 </div>
               )
             })}

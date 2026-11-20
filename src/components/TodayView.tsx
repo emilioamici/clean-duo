@@ -32,7 +32,7 @@ export function TodayView() {
         const u = urgencyOf(x)
         return filter === 'all' || (filter === 'todo' ? u === 'overdue' || u === 'today' || isRunning(x) : (u === 'soon' || u === 'later') && !isRunning(x))
       })
-      .sort((a, b) => Number(isRunning(b)) - Number(isRunning(a)) || (nextDue(a) ?? 0) - (nextDue(b) ?? 0) || b.stars - a.stars)
+      .sort((a, b) => Number(isRunning(b)) - Number(isRunning(a)) || (nextDue(a) ?? 8.64e15) - (nextDue(b) ?? 8.64e15) || b.stars - a.stars)
   }, [active, filter, room])
 
   const myStars = me ? starsSince(db.logs, weekStart())[me.id] ?? 0 : 0
