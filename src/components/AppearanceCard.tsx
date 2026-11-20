@@ -2,6 +2,8 @@ import { Check } from 'lucide-react'
 import { THEME_NAME, type Theme } from '../lib/theme'
 import { useApp } from '../store/AppContext'
 import { MascotImg } from './Mascots'
+import { LANG_NAME, getLangPref, setLangPref, t, useLang, type LangPref } from '../i18n'
+import { useState } from 'react'
 
 const OPTIONS: Array<{ id: Theme; hint: string }> = [
   { id: 'light', hint: 'Chiara, crema e arancio come il gatto bianco e arancione' },
@@ -12,8 +14,11 @@ const OPTIONS: Array<{ id: Theme; hint: string }> = [
 /** Scelta del tema: Mochi (chiaro), Zenitsu (scuro) o automatico. */
 export function AppearanceCard() {
   const { theme, setTheme } = useApp()
+  useLang()
+  const [langPref, setLang] = useState<LangPref>(getLangPref)
   return (
-    <div role="radiogroup" aria-label="Tema dell'app" className="space-y-2">
+    <>
+    <div role="radiogroup" aria-label={t('Tema dell\'app')} className="space-y-2">
       {OPTIONS.map((o) => {
         const on = theme === o.id
         return (
@@ -23,13 +28,21 @@ export function AppearanceCard() {
               {o.id === 'auto' ? <MascotImg kind="pair" className="h-10 w-auto" /> : <MascotImg kind={o.id === 'dark' ? 'zenitsu' : 'mochi'} className="h-12 w-auto" />}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block font-semibold">{THEME_NAME[o.id]}</span>
-              <span className="block text-xs text-muted">{o.hint}</span>
+              <span className="block font-semibold">{t(THEME_NAME[o.id])}</span>
+              <span className="block text-xs text-muted">{t(o.hint)}</span>
             </span>
             {on && <Check size={20} className="shrink-0 text-brand" />}
           </button>
         )
       })}
     </div>
+    <p className="label">{t('Lingua')}</p>
+    <div role="radiogroup" aria-label={t('Lingua')} className="flex gap-2">
+      {(['auto', 'it', 'en'] as LangPref[]).map((id) => (
+        <button key={id} type="button" role="radio" aria-checked={langPref === id} onClick={() => { setLangPref(id); setLang(id) }}
+          className={`chip flex-1 justify-center ${langPref === id ? 'chip-active' : ''}`}>{id === 'auto' ? t('Automatico') : LANG_NAME[id]}</button>
+      ))}
+    </div>
+    </>
   )
 }

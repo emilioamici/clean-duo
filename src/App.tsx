@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef } from 'react'
-import { BottomNav, Background, Celebration, Toast } from './components/Chrome'
+import { BottomNav, Background, Celebration, NotificationCenter, NotificationToast, Toast } from './components/Chrome'
+import { useLang } from './i18n'
 import { RankingView } from './components/RankingView'
 import { RoomsView } from './components/RoomsView'
 import { SettingsView } from './components/SettingsView'
@@ -11,6 +12,7 @@ import { useApp } from './store/AppContext'
 import { useUi } from './store/UiContext'
 
 export default function App() {
+  useLang()
   const { tab, roomId } = useUi()
   const { mode, status, demoSkipped, offlineSkipped } = useApp()
   // prima pagina: accesso con Google (o demo se scelta); sessione scaduta -> riaccesso
@@ -45,6 +47,7 @@ export default function App() {
               </AnimatePresence>
             )}
           </div>
+          {!gate && <div id="shell-overlay" className="pointer-events-none absolute inset-0 z-30" />}
           {!gate && (
             <>
               <BottomNav />
@@ -52,6 +55,8 @@ export default function App() {
               <RoomSheet />
               <MemberSheet />
               <MemberSwitcher />
+              <NotificationCenter />
+              <NotificationToast />
             </>
           )}
           <Toast />

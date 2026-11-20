@@ -19,8 +19,12 @@ export interface Member {
   color: string
   avatar: string
   email?: string
+  /** Quali notifiche vuole ricevere dagli altri (predefinito: tutte) */
+  notify?: NotifyPrefs
   updatedAt: number
 }
+
+export interface NotifyPrefs { done: boolean; task: boolean; member: boolean }
 
 export interface Room {
   id: string
@@ -38,9 +42,17 @@ export interface Task {
   recurrence: Recurrence
   assignment: Assignment
   createdAt: number
+  /** Chi ha creato l'azione (per le notifiche agli altri) */
+  createdBy?: string
   lastCompletedAt: number | null
   /** Quante volte è stata completata (usato per la rotazione) */
   completions: number
+  /** Durata in minuti: il tap avvia l'azione, che resta «in corso» e si completa da sola alla fine (es. asciugatrice) */
+  durationMin?: number
+  /** Fine prevista (ms) se è in corso, altrimenti assente */
+  runningUntil?: number | null
+  /** Chi l'ha avviata: a lui vanno le stelle */
+  runningBy?: string
   /** Una tantum completata -> archiviata */
   archived: boolean
   updatedAt: number
@@ -54,6 +66,8 @@ export interface ActivityLog {
   memberId: string
   stars: number
   at: number
+  /** completata da sola alla fine della durata */
+  timer?: boolean
 }
 
 export interface Settings {

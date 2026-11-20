@@ -1,4 +1,5 @@
 import type { Room, Task } from '../types'
+import { locale, t } from '../i18n'
 
 export const DAY = 86_400_000
 
@@ -128,28 +129,32 @@ export function cleanColor(pct: number): string {
 
 export function dueLabel(task: Task, now = Date.now()): string {
   const due = nextDue(task)
-  if (due === null) return 'Completata'
+  if (due === null) return t('Completata')
   const diff = Math.round((startOfDay(due) - startOfDay(now)) / DAY)
-  if (diff < -1) return `Scaduta da ${-diff} giorni`
-  if (diff === -1) return 'Scaduta ieri'
-  if (diff === 0) return 'Oggi'
-  if (diff === 1) return 'Domani'
-  return `Tra ${diff} giorni`
+  if (diff < -1) return t('Scaduta da {n} giorni', { n: -diff })
+  if (diff === -1) return t('Scaduta ieri')
+  if (diff === 0) return t('Oggi')
+  if (diff === 1) return t('Domani')
+  return t('Tra {n} giorni', { n: diff })
+}
+
+/** Nome breve del giorno della settimana (0 = domenica) nella lingua in uso. */
+export function weekdayShort(d: number): string {
+  return new Intl.DateTimeFormat(locale(), { weekday: 'short' }).format(new Date(2024, 0, 7 + d)) // 7 gen 2024 era una domenica
 }
 
 export function recurrenceLabel(task: Task): string {
   const { type, every, weekdays } = task.recurrence
-  const names = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']
   switch (type) {
-    case 'once': return 'Una tantum'
-    case 'daily': return every === 1 ? 'Ogni giorno' : `Ogni ${every} giorni`
+    case 'once': return t('Una tantum')
+    case 'daily': return every === 1 ? t('Ogni giorno') : t('Ogni {n} giorni', { n: every })
     case 'weekly':
       if (weekdays && weekdays.length) {
-        const d = [...weekdays].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((x) => names[x]).join(' ')
-        return every === 1 ? d : `Ogni ${every} sett. · ${d}`
+        const d = [...weekdays].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map(weekdayShort).join(' ')
+        return every === 1 ? d : t('Ogni {n} sett. · {days}', { n: every, days: d })
       }
-      return every === 1 ? 'Ogni settimana' : `Ogni ${every} settimane`
-    case 'monthly': return every === 1 ? 'Ogni mese' : `Ogni ${every} mesi`
+      return every === 1 ? t('Ogni settimana') : t('Ogni {n} settimane', { n: every })
+    case 'monthly': return every === 1 ? t('Ogni mese') : t('Ogni {n} mesi', { n: every })
   }
 }
 
