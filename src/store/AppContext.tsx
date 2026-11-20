@@ -42,6 +42,13 @@ const envCfg: GoogleConfig = {
   appId: import.meta.env.VITE_GOOGLE_APP_ID ?? '',
 }
 
+/** I valori impostati nella build (variabili di GitHub) vincono su quelli salvati su questo dispositivo: una chiave vecchia o sbagliata salvata in passato non deve oscurarli. */
+export const mergeConfig = (env: GoogleConfig, saved: Partial<GoogleConfig>): GoogleConfig => ({
+  clientId: env.clientId || saved.clientId || '',
+  apiKey: env.apiKey || saved.apiKey || '',
+  appId: env.appId || saved.appId || '',
+})
+
 /** Preferenze di questo dispositivo (le notifiche per tipo stanno invece nel profilo del membro, così chi scrive sa a chi inviarle). */
 export interface Prefs {
   /** notifiche di sistema attive su questo dispositivo */
@@ -160,7 +167,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SyncStatus>(meta.mode === 'demo' ? 'demo' : 'idle')
   const [statusMessage, setStatusMessage] = useState('')
   const [user, setUser] = useState<GoogleUser | null>(null)
-  const [config, setConfigState] = useState<GoogleConfig>(() => ({ ...envCfg, ...load<Partial<GoogleConfig>>(K.cfg, {}) }))
+  const [config, setConfigState] = useState<GoogleConfig>(() => mergeConfig(envCfg, load<Partial<GoogleConfig>>(K.cfg, {})))
   const [theme, setThemeState] = useState<Theme>(getTheme)
   const [meId, setMeIdState] = useState<string | null>(() => load<string | null>(K.me, null))
   const [toast, setToast] = useState<string | null>(null)
