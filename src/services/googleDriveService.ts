@@ -5,6 +5,7 @@
 import type { AppDatabase } from '../types'
 import { parseDb } from '../lib/merge'
 import { t } from '../i18n'
+import { bridgePost } from './bridge'
 import { SessionExpired, brokerAvailable, hasSession, logoutBroker, refreshAccessToken, startBrokerLogin } from './broker'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -136,6 +137,38 @@ export function signOut() {
   clearToken()
 }
 
+/* ---------- case aperte dal ponte del Worker (senza accesso diretto al file) ---------- */
+const BRIDGED_KEY = 'cleanduo:bridged'
+const bridgedIds = (): string[] => { try { return JSON.parse(localStorage.getItem(BRIDGED_KEY) ?? '[]') as string[] } catch { return [] } }
+export const isBridged = (fileId: string): boolean => bridgedIds().includes(fileId)
+export function setBridged(fileId: string, on: boolean): void {
+  try {
+    const rest = bridgedIds().filter((x) => x !== fileId)
+    localStorage.setItem(BRIDGED_KEY, JSON.stringify(on ? [...rest, fileId] : rest))
+  } catch { /* noop */ }
+}
+
+/** Token valido (rinnovato con la sessione persistente se serve). */
+async function ensureToken(): Promise<string> {
+  if (!hasValidToken()) {
+    const ok = await renewWithSession() // AuthError se la sessione persistente non vale più
+    if (!ok || !hasValidToken()) throw hasSession() ? new NetworkError() : new AuthError()
+  }
+  return tok!.value
+}
+
+/** Chiamata al ponte con gli stessi errori di Drive: 409 = conflitto, 401 = sessione scaduta, 403/404/410 = niente accesso. */
+async function bridgeCall(path: string, body: unknown): Promise<any> {
+  const token = await ensureToken()
+  let r
+  try { r = await bridgePost(path, token, body) } catch { throw new NetworkError() }
+  if (r.status === 401) { clearToken(); throw new AuthError() }
+  if (r.status === 409) throw new ConflictError()
+  if (r.status === 403 || r.status === 404 || r.status === 410) throw new NotFoundError(r.json?.error || undefined)
+  if (r.status !== 200) throw new Error(r.json?.error || t('Errore del server ({status})', { status: r.status }))
+  return r.json
+}
+
 /* ---------- fetch con gestione errori ---------- */
 async function api(path: string, init: RequestInit = {}, base = API): Promise<Response> {
   if (!hasValidToken()) {
@@ -181,6 +214,10 @@ export async function getMeta(fileId: string): Promise<DriveMeta> {
 }
 
 export async function readDb(fileId: string): Promise<{ meta: DriveMeta; db: AppDatabase }> {
+  if (isBridged(fileId)) {
+    const j = await bridgeCall('/db/read', { fileId })
+    return { meta: j.meta as DriveMeta, db: parseDb(j.db) }
+  }
   // Prima i metadati: se qualcuno scrive nel frattempo, la versione "vecchia" farà scattare il conflitto in scrittura.
   const meta = await getMeta(fileId)
   const res = await api(`/files/${encodeURIComponent(fileId)}?alt=media`)
@@ -209,6 +246,7 @@ export async function createDb(db: AppDatabase): Promise<DriveMeta> {
  * Altrimenti lancia ConflictError e il chiamante rilegge, fa il merge e riprova.
  */
 export async function writeDb(fileId: string, db: AppDatabase, expectedVersion: string): Promise<DriveMeta> {
+  if (isBridged(fileId)) return (await bridgeCall('/db/write', { fileId, db, expectedVersion })).meta as DriveMeta
   const current = await getMeta(fileId)
   if (current.version !== expectedVersion) throw new ConflictError()
   const res = await api(`/files/${encodeURIComponent(fileId)}?uploadType=media&fields=${META_FIELDS}`, {

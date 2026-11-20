@@ -17,6 +17,7 @@ import { triggerDependents, unlinkMissing } from '../lib/deps'
 import { applyCompletion, removeRoom, setRooms, taskRooms } from '../lib/rooms'
 import { undoCompletion } from '../lib/history'
 import { clearInvite, inviteLink } from '../services/invite'
+import { registerHouse } from '../services/bridge'
 import { AVATARS, MEMBER_COLORS } from '../lib/demo'
 import type { GoogleConfig, GoogleUser } from '../services/googleDriveService'
 
@@ -141,7 +142,8 @@ interface Ctx {
   connect: () => Promise<drive.DriveMeta[]>
   reconnect: () => Promise<void>
   createHouse: (houseName: string, fromCurrent: boolean, memberName?: string) => Promise<void>
-  joinHouse: (fileIdOrLink: string | null, usePicker: boolean) => Promise<void>
+  /** `bridged`: la casa si apre dal ponte del Worker (invitato senza accesso diretto al file) */
+  joinHouse: (fileIdOrLink: string | null, usePicker: boolean, bridged?: boolean) => Promise<void>
   /** Invita un account Google: accesso al database su Drive + email con il link d'invito; aggiunge il membro. */
   shareWith: (email: string, name?: string) => Promise<void>
   disconnect: () => void
@@ -361,6 +363,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     navigator.serviceWorker?.addEventListener('message', onMsg)
     return () => navigator.serviceWorker?.removeEventListener('message', onMsg)
   }, [runSync])
+
+  // chi ha accesso diretto al file lo registra sul ponte del Worker: gli invitati entrano senza Selettore di Google né ID.
+  // Serve l'accesso persistente (il Worker usa quella sessione); si ripete ogni 3 giorni.
+  useEffect(() => {
+    const fid = meta.fileId
+    if (meta.mode !== 'drive' || !fid || status !== 'idle' || drive.isBridged(fid)) return
+    const key = `cleanduo:bridgeReg:${fid}`
+    let last = 0
+    try { last = Number(localStorage.getItem(key)) || 0 } catch { /* noop */ }
+    if (Date.now() - last < 3 * 24 * 3600 * 1000) return
+    const tk = drive.currentToken()
+    if (!tk) return
+    void registerHouse(fid, tk).then((ok) => { if (ok) { try { localStorage.setItem(key, String(Date.now())) } catch { /* noop */ } } })
+  }, [meta.mode, meta.fileId, status])
 
   // promemoria: il server li invia all'ora scelta anche con l'app chiusa; qui si ricalcolano a ogni sincronizzazione
   const remindersKey = `${prefs.reminders}|${prefs.reminderTime}|${prefs.pushEnabled}|${meta.lastSyncAt}|${db.lastUpdated}`
@@ -637,14 +653,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     notify(t('Casa creata su Google Drive ✨'))
   }
 
-  const joinHouse: Ctx['joinHouse'] = async (fileIdOrLink, usePicker) => {
+  const joinHouse: Ctx['joinHouse'] = async (fileIdOrLink, usePicker, bridged = false) => {
     if (!drive.hasValidToken()) await drive.signIn(configRef.current.clientId, true)
     let id: string | null
     // con un ID e il Picker (invito): il selettore mostra solo quel file
     if (usePicker) id = await drive.pickDbFile(configRef.current, fileIdOrLink ? drive.parseFileId(fileIdOrLink) : undefined)
     else id = fileIdOrLink ? drive.parseFileId(fileIdOrLink) : null
     if (!id) return
-    const { meta: rm, db: remote } = await drive.readDb(id)
+    drive.setBridged(id, bridged)
+    let read: Awaited<ReturnType<typeof drive.readDb>>
+    try { read = await drive.readDb(id) } catch (e) { drive.setBridged(id, false); throw e }
+    const { meta: rm, db: remote } = read
     const u = user ?? (await drive.getUser().catch(() => null))
     if (u) setUser(u)
     let joined = remote
@@ -784,6 +803,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   const disconnect = () => {
+    if (metaRef.current.fileId) drive.setBridged(metaRef.current.fileId, false)
     drive.signOut()
     setMeta({ mode: 'demo', fileId: null, version: null, dirty: false, lastSyncAt: null })
     setUser(null); setStatus('demo'); setStatusMessage(''); setDemoSkipped(false); setPersistent(false)

@@ -5,6 +5,7 @@ import { t } from '../i18n'
 import { tb } from '../i18n/rich'
 import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
+import { bridgeAvailable } from '../services/bridge'
 import { Avatar } from './ui'
 
 const validEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim())
@@ -28,18 +29,22 @@ export function FamilyCard() {
   const [err, setErr] = useState('')
   const [info, setInfo] = useState('')
   const [copied, setCopied] = useState(false)
+  const [bridge, setBridge] = useState(false)
+  useEffect(() => { void bridgeAvailable().then(setBridge) }, [])
   const [perms, setPerms] = useState<drive.DrivePermission[]>([])
   const inDrive = mode === 'drive' && !!fileId
+  /** aperta dal ponte del Worker: non c'è accesso diretto al file, quindi niente invito né ID da qui */
+  const viaBridge = inDrive && !!fileId && drive.isBridged(fileId)
 
   useEffect(() => {
-    if (!inDrive || !fileId || status !== 'idle') return
+    if (!inDrive || !fileId || viaBridge || status !== 'idle') return
     drive.listPermissions(fileId).then(setPerms).catch(() => setPerms([]))
   }, [inDrive, fileId, status, app.lastSyncAt])
 
   const owner = perms.find((p) => p.role === 'owner')?.emailAddress?.toLowerCase() ?? ''
   const isOwner = (e?: string) => !!e && !!owner && e.toLowerCase() === owner
   // se il proprietario non è noto (permessi non leggibili) non si blocca nulla
-  const canInvite = !inDrive || !owner || user?.email.toLowerCase() === owner
+  const canInvite = !inDrive || (!viaBridge && (!owner || user?.email.toLowerCase() === owner))
 
   const invite = async () => {
     const mail = email.trim()
@@ -109,6 +114,8 @@ export function FamilyCard() {
           <button className="glass-btn w-full" onClick={() => openMemberSheet({})}><Plus size={16} /> {t('Aggiungi membro')}</button>
           <p className="mt-2 text-xs text-muted">{t('Per invitare qualcuno via email collega prima la casa a Google Drive (Sincronizzazione e account).')}</p>
         </Box>
+      ) : viaBridge ? (
+        <p className="rounded-xl bg-bg/60 p-3 text-xs text-muted">{t('Sei entrato dall’invito: gli inviti ai nuovi membri li fa chi ha creato la casa.')}</p>
       ) : canInvite ? (
         <Box>
           <p className="mb-2 flex items-center gap-2 text-sm font-semibold"><Mail size={16} className="text-brand" />{t('Aggiungi membro')}</p>
@@ -117,12 +124,13 @@ export function FamilyCard() {
             <input className="field" placeholder={t('Nome (facoltativo)')} value={name} onChange={(e) => setName(e.target.value)} />
             <button className="glass-btn btn-primary w-full !py-3" disabled={busy || !validEmail(email)} onClick={() => void invite()}>{t('Invia invito')}</button>
           </div>
+          {bridge && !app.persistent && <p className="mt-2 rounded-xl bg-brand/10 p-2 text-xs text-brand">{t('Per far entrare gli invitati senza il selettore di Google attiva l’accesso persistente (Sincronizzazione e account).')}</p>}
           <p className="mt-2 text-xs text-muted">{tb('L’invito dà accesso in modifica al database su Drive e arriva per email con il link per entrare: la persona deve solo aprirlo e accedere con quell’account Google. Se l’app Google è in modalità <b>Testing</b>, aggiungi la stessa email anche tra gli <b>utenti di prova</b> in Google Cloud Console, altrimenti non potrà accedere.')}</p>
         </Box>
       ) : (
         <p className="rounded-xl bg-bg/60 p-3 text-xs text-muted">{t('Solo il capofamiglia ({owner}) può invitare nuovi membri.', { owner })}</p>
       )}
-      {inDrive && fileId && (
+      {inDrive && fileId && !viaBridge && (
         <Box>
           <label className="label !mt-0">{t('ID famiglia')}</label>
           <div className="flex gap-2">
@@ -135,7 +143,7 @@ export function FamilyCard() {
       {err && <p className="rounded-xl bg-exp/10 p-3 text-sm text-exp">{err}</p>}
       {info && <p className="flex items-center gap-2 rounded-xl bg-inc/10 p-3 text-sm text-inc"><Check size={16} className="shrink-0" />{info}</p>}
 
-      {inDrive && fileId && (
+      {inDrive && fileId && !viaBridge && (
         <div className="flex items-center gap-3 border-t border-line/70 pt-3 text-sm">
           <FolderOpen size={18} className="shrink-0 text-brand" />
           <div className="min-w-0 flex-1">

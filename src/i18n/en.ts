@@ -1,5 +1,9 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "Errore del server ({status})": "Server error ({status})",
+  "Per far entrare gli invitati senza il selettore di Google attiva l’accesso persistente (Sincronizzazione e account).": "To let invited people in without Google’s file picker, turn on persistent sign-in (Sync and account).",
+  "Sei entrato dall’invito: gli inviti ai nuovi membri li fa chi ha creato la casa.": "You joined from an invitation: invitations to new members are sent by whoever created the house.",
+  "I dati restano nel tuo Google Drive e su questo dispositivo. Il server della casa (il tuo Cloudflare Worker) li fa solo transitare per gli invitati e non li conserva.": "Your data stays in your Google Drive and on this device. The house server (your own Cloudflare Worker) only relays it for invited members and does not store it.",
   "Il codice da dare a chi entra: dopo l’invito lo incolla all’accesso come «ID famiglia».": "The code to give to whoever joins: after the invitation they paste it at sign-in as “Family ID”.",
   "Non riesco ad aprire la casa: controlla l’ID e che ti abbia invitato con questo account Google.": "I can’t open the house: check the ID and that you were invited with this Google account.",
   "Al primo accesso Google può chiederti di confermare il file della casa con un tocco: serve a dare a Clean Duo il permesso di aprirlo.": "On first sign-in Google may ask you to confirm the house file with a tap: this gives Clean Duo permission to open it.",
@@ -127,7 +131,6 @@ export const EN: Record<string, string> = {
   "Hai accesso a più case. Quale vuoi aprire?": "You have access to more than one home. Which one do you want to open?",
   "Hai ricevuto un invito?": "Did you receive an invitation?",
   "Ho il link o l’ID del file": "I have the file link or ID",
-  "I dati restano nel tuo Google Drive e su questo dispositivo: nessun server di terze parti per i dati.": "Your data stays in your Google Drive and on this device: no third-party server for the data.",
   "I dati sono solo su questo dispositivo": "The data is only on this device",
   "ID del file database (da dare al partner)": "Database file ID (to give to your partner)",
   "Icona": "Icon",
