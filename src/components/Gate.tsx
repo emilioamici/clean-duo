@@ -59,6 +59,15 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
     await afterConnect(await app.connect())
   })
 
+  /** ID famiglia: si prova ad aprire il file; se l'app non ha ancora il permesso (accesso ristretto ai file) un tocco sul Picker lo concede. */
+  const joinWithId = async () => {
+    try { await app.joinHouse(joinId, false) } catch (e) {
+      if (e instanceof drive.NotFoundError && pickerOk) await app.joinHouse(joinId, true)
+      else if (e instanceof drive.NotFoundError) throw new Error(t('Non riesco ad aprire la casa: controlla l’ID e che ti abbia invitato con questo account Google.'))
+      else throw e
+    }
+  }
+
   const search = () => guard(async () => { await afterConnect(await drive.findDbFiles()) })
 
   return (
@@ -152,24 +161,13 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
             </div>
 
             <div className="space-y-2 rounded-2xl border border-line p-3">
-              <p className="flex items-center gap-2 text-sm font-semibold"><Folder size={16} className="text-brand" />{t('Hai ricevuto un invito?')}</p>
-              {pickerOk ? (
-                <>
-                  <p className="text-xs text-muted">{t('Chi ha creato la casa ha condiviso il database con te: scegli quel file su Drive (in «Condivisi con me»). Si fa una volta sola.')}</p>
-                  <button className="glass-btn btn-primary w-full" disabled={busy} onClick={() => void guard(() => app.joinHouse(null, true))}>
-                    {busy ? <Loader2 size={18} className="animate-spin" /> : <Folder size={18} />}{t('Scegli il database della casa')}
-                  </button>
-                </>
-              ) : (
-                <p className="text-xs text-muted">{t('Per aprire il file di un altro serve il Google Picker: imposta API Key e App ID (README). In alternativa incolla l’ID qui sotto.')}</p>
-              )}
-              <details className="text-sm">
-                <summary className="cursor-pointer text-muted">{t('Ho il link o l’ID del file')}</summary>
-                <div className="mt-2 flex gap-2">
-                  <input className="field" placeholder={t('Link o ID del file Drive')} value={joinId} onChange={(e) => setJoinId(e.target.value)} autoCapitalize="none" autoCorrect="off" />
-                  <button className="glass-btn btn-primary" disabled={busy || !joinId.trim()} onClick={() => void guard(() => app.joinHouse(joinId, false))}>{t('Collega')}</button>
-                </div>
-              </details>
+              <p className="flex items-center gap-2 text-sm font-semibold"><Folder size={16} className="text-brand" />{t('Entra in una casa con l’ID famiglia')}</p>
+              <p className="text-xs text-muted">{t('Chi ha creato la casa ti manda il suo ID famiglia (lo trova in Impostazioni → Casa e membri): incollalo qui.')}</p>
+              <input className="field font-mono !text-xs" placeholder={t('ID famiglia')} value={joinId} onChange={(e) => setJoinId(e.target.value)} autoCapitalize="none" autoCorrect="off" aria-label={t('ID famiglia')} />
+              <button className="glass-btn btn-primary w-full" disabled={busy || !joinId.trim()} onClick={() => void guard(joinWithId)}>
+                {busy ? <Loader2 size={18} className="animate-spin" /> : <Folder size={18} />}{t('Entra')}
+              </button>
+              {pickerOk && <p className="text-xs text-muted">{t('Al primo accesso Google può chiederti di confermare il file della casa con un tocco: serve a dare a Clean Duo il permesso di aprirlo.')}</p>}
             </div>
 
             <p className="rounded-xl bg-brand/10 p-3 text-sm text-muted">

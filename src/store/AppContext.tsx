@@ -667,7 +667,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!drive.hasValidToken()) await drive.signIn(configRef.current.clientId, true)
     const addr = email.trim()
     // nell'email di Drive c'è il link dell'app: chi lo apre e accede con Google entra in casa con un tocco
-    await drive.shareFile(id, addr, t('Ti invito nella casa «{name}» su Clean Duo. Apri questo link e accedi con questo account Google: il database ti verrà collegato in automatico. {link}', { name: dbRef.current.houseName, link: inviteLink(id) }))
+    await drive.shareFile(id, addr, t('Ti invito nella casa «{name}» su Clean Duo. Accedi a Clean Duo con questo account Google e incolla questo ID famiglia: {id}. Oppure apri direttamente il link: {link}', { name: dbRef.current.houseName, id, link: inviteLink(id) }))
     // il profilo c'è già quando la persona accede: la riconosce dall'email
     if (!dbRef.current.members.some((m) => m.email?.toLowerCase() === addr.toLowerCase())) {
       const n = dbRef.current.members.length
