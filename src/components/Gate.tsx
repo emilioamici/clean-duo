@@ -4,6 +4,7 @@ import * as drive from '../services/googleDriveService'
 import { timeAgo } from '../lib/stats'
 import { hasSession } from '../services/broker'
 import { clearInvite, pendingInvite } from '../services/invite'
+import { bridgeAvailable, myHouses } from '../services/bridge'
 import { t, useLang } from '../i18n'
 import { tb } from '../i18n/rich'
 import { useApp } from '../store/AppContext'
@@ -26,6 +27,8 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
   const [houseName, setHouseName] = useState('La nostra casa')
   const [myName, setMyName] = useState('')
   const [joinId, setJoinId] = useState('')
+  /** case trovate dal ponte del Worker: si aprono senza accesso diretto al file */
+  const [bridged, setBridged] = useState<Set<string>>(new Set())
   const pickerOk = drive.pickerAvailable(config)
 
   const guard = async (fn: () => Promise<void>) => {
@@ -41,11 +44,31 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
     if (inv) {
       try { await app.joinHouse(inv, false); return } catch (e) {
         if (!(e instanceof drive.NotFoundError)) throw e
-        setPhase('invite'); return // serve il permesso sul file: un tocco sul Picker
       }
+      // niente accesso diretto: si prova il ponte del Worker, poi il Picker (un tocco)
+      if (await tryBridge(inv)) return
+      setPhase('invite'); return
     }
-    if (found.length === 1) await app.joinHouse(found[0].id, false) // una sola casa: collegamento automatico
-    else { setFiles(found); setPhase(found.length > 1 ? 'choose' : 'none') }
+    // le case a cui sono stato invitato, aperte dal ponte del Worker (nessun selettore, nessun ID)
+    let list = found
+    const ids = new Set<string>()
+    const token = drive.currentToken()
+    if (token) {
+      const extra = (await myHouses(token)).filter((h) => !found.some((f) => f.id === h.id))
+      extra.forEach((h) => ids.add(h.id))
+      list = [...found, ...extra.map((h): drive.DriveMeta => ({ id: h.id, name: h.name, version: '', modifiedTime: h.modifiedTime }))]
+    }
+    setBridged(ids)
+    if (list.length === 1) await app.joinHouse(list[0].id, false, ids.has(list[0].id)) // una sola casa: collegamento automatico
+    else { setFiles(list); setPhase(list.length > 1 ? 'choose' : 'none') }
+  }
+  /** Apre la casa dal ponte del Worker; false se non è disponibile o non si ha accesso. */
+  const tryBridge = async (id: string): Promise<boolean> => {
+    if (!(await bridgeAvailable())) return false
+    try { await app.joinHouse(id, false, true); return true } catch (e) {
+      if (e instanceof drive.NotFoundError) return false
+      throw e
+    }
   }
   const afterLogin = async () => { await afterConnect(await app.connect()) }
   // ritorno dal login di Google (pagina intera): la sessione c'è già, si prosegue da soli
@@ -62,6 +85,7 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
   /** ID famiglia: si prova ad aprire il file; se l'app non ha ancora il permesso (accesso ristretto ai file) un tocco sul Picker lo concede. */
   const joinWithId = async () => {
     try { await app.joinHouse(joinId, false) } catch (e) {
+      if (e instanceof drive.NotFoundError && (await tryBridge(drive.parseFileId(joinId)))) return
       if (e instanceof drive.NotFoundError && pickerOk) await app.joinHouse(joinId, true)
       else if (e instanceof drive.NotFoundError) throw new Error(t('Non riesco ad aprire la casa: controlla l’ID e che ti abbia invitato con questo account Google.'))
       else throw e
@@ -134,7 +158,7 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
             <p className="text-sm text-muted">{t('Hai accesso a più case. Quale vuoi aprire?')}</p>
             <div className="space-y-2">
               {files.map((f) => (
-                <button key={f.id} disabled={busy} onClick={() => void guard(() => app.joinHouse(f.id, false))} className="w-full rounded-xl border border-line p-3 text-left text-sm hover:bg-line/40">
+                <button key={f.id} disabled={busy} onClick={() => void guard(() => app.joinHouse(f.id, false, bridged.has(f.id)))} className="w-full rounded-xl border border-line p-3 text-left text-sm hover:bg-line/40">
                   <p className="font-semibold">{f.name}</p>
                   <p className="text-xs text-muted">{t('aggiornato {when}', { when: timeAgo(new Date(f.modifiedTime).getTime()) })}</p>
                 </button>
@@ -177,7 +201,7 @@ export function Gate({ reconnect = false }: { reconnect?: boolean }) {
           </>
         )}
       </div>
-      <p className="mt-6 text-center text-xs text-muted">{t('I dati restano nel tuo Google Drive e su questo dispositivo: nessun server di terze parti per i dati.')}</p>
+      <p className="mt-6 text-center text-xs text-muted">{t('I dati restano nel tuo Google Drive e su questo dispositivo. Il server della casa (il tuo Cloudflare Worker) li fa solo transitare per gli invitati e non li conserva.')}</p>
     </div>
   )
 }
