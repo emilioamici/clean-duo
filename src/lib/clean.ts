@@ -1,0 +1,168 @@
+import type { Room, Task } from '../types'
+
+export const DAY = 86_400_000
+
+export function startOfDay(ts: number): number {
+  const d = new Date(ts)
+  d.setHours(0, 0, 0, 0)
+  return d.getTime()
+}
+
+export function endOfDay(ts: number): number {
+  return startOfDay(ts) + DAY - 1
+}
+
+/** Lunedì della settimana contenente ts (00:00 locali) */
+export function startOfWeek(ts: number): number {
+  const d = new Date(startOfDay(ts))
+  const dow = (d.getDay() + 6) % 7 // lun=0
+  d.setDate(d.getDate() - dow)
+  return d.getTime()
+}
+
+export function startOfMonth(ts: number): number {
+  const d = new Date(ts)
+  return new Date(d.getFullYear(), d.getMonth(), 1).getTime()
+}
+
+function addMonths(ts: number, months: number): number {
+  const d = new Date(ts)
+  const day = d.getDate()
+  d.setDate(1)
+  d.setMonth(d.getMonth() + months)
+  const max = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  d.setDate(Math.min(day, max))
+  return d.getTime()
+}
+
+/** Prossima scadenza (ms) oppure null se una tantum archiviata. */
+export function nextDue(task: Task): number | null {
+  if (task.archived) return null
+  const { type, every, weekdays } = task.recurrence
+  const n = Math.max(1, every || 1)
+  const ref = task.lastCompletedAt ?? task.createdAt
+
+  if (type === 'once') return task.lastCompletedAt ? null : startOfDay(task.createdAt)
+
+  if (type === 'daily') {
+    return task.lastCompletedAt ? startOfDay(ref) + n * DAY : startOfDay(ref)
+  }
+
+  if (type === 'weekly') {
+    if (weekdays && weekdays.length > 0) {
+      const days = [...weekdays].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7))
+      if (!task.lastCompletedAt) {
+        // Mai fatta: prima occorrenza da oggi della creazione in poi
+        const base = startOfDay(ref)
+        for (let i = 0; i < 7; i++) {
+          const t = base + i * DAY
+          if (days.includes(new Date(t).getDay())) return t
+        }
+      }
+      const refDay = startOfDay(ref)
+      const weekStart = startOfWeek(ref)
+      // stessa settimana, giorno successivo a quello di completamento
+      for (let i = 0; i < 7; i++) {
+        const t = new Date(weekStart)
+        t.setDate(t.getDate() + i)
+        const ts = t.getTime()
+        if (ts > refDay && days.includes(t.getDay())) return ts
+      }
+      // altrimenti: prima occorrenza di N settimane dopo
+      const next = new Date(weekStart)
+      next.setDate(next.getDate() + 7 * n)
+      for (let i = 0; i < 7; i++) {
+        const t = new Date(next)
+        t.setDate(t.getDate() + i)
+        if (days.includes(t.getDay())) return t.getTime()
+      }
+    }
+    return task.lastCompletedAt ? startOfDay(ref) + n * 7 * DAY : startOfDay(ref)
+  }
+
+  // monthly
+  return task.lastCompletedAt ? startOfDay(addMonths(ref, n)) : startOfDay(ref)
+}
+
+export type Urgency = 'overdue' | 'today' | 'soon' | 'later'
+
+export function urgencyOf(task: Task, now = Date.now()): Urgency {
+  const due = nextDue(task)
+  if (due === null) return 'later'
+  if (due < startOfDay(now)) return 'overdue'
+  if (due <= endOfDay(now)) return 'today'
+  if (due <= endOfDay(now) + 2 * DAY) return 'soon'
+  return 'later'
+}
+
+/** 0..1 — quanto è "pulita" la task (1 = appena fatta, 0 = scaduta). */
+export function taskCleanliness(task: Task, now = Date.now()): number {
+  if (task.archived) return 1
+  const due = nextDue(task)
+  if (due === null) return 1
+  // la scadenza è a inizio giornata: il "tempo utile" arriva a fine giornata
+  const deadline = due + DAY
+  const ref = task.lastCompletedAt ?? task.createdAt
+  const total = task.recurrence.type === 'once' ? 7 * DAY : Math.max(DAY, deadline - ref)
+  return Math.max(0, Math.min(1, (deadline - now) / total))
+}
+
+/** 0..100 — media pesata per difficoltà delle task attive della stanza. */
+export function roomCleanliness(room: Room, tasks: Task[], now = Date.now()): number {
+  const active = tasks.filter((t) => t.roomId === room.id && !t.archived)
+  if (active.length === 0) return 100
+  let sum = 0
+  let weight = 0
+  for (const t of active) {
+    sum += taskCleanliness(t, now) * t.stars
+    weight += t.stars
+  }
+  return Math.round((sum / weight) * 100)
+}
+
+export function cleanColor(pct: number): string {
+  // 0 = rosso (0°), 100 = verde (140°)
+  const hue = Math.round((Math.max(0, Math.min(100, pct)) / 100) * 140)
+  return `hsl(${hue} 58% 48%)`
+}
+
+export function dueLabel(task: Task, now = Date.now()): string {
+  const due = nextDue(task)
+  if (due === null) return 'Completata'
+  const diff = Math.round((startOfDay(due) - startOfDay(now)) / DAY)
+  if (diff < -1) return `Scaduta da ${-diff} giorni`
+  if (diff === -1) return 'Scaduta ieri'
+  if (diff === 0) return 'Oggi'
+  if (diff === 1) return 'Domani'
+  return `Tra ${diff} giorni`
+}
+
+export function recurrenceLabel(task: Task): string {
+  const { type, every, weekdays } = task.recurrence
+  const names = ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab']
+  switch (type) {
+    case 'once': return 'Una tantum'
+    case 'daily': return every === 1 ? 'Ogni giorno' : `Ogni ${every} giorni`
+    case 'weekly':
+      if (weekdays && weekdays.length) {
+        const d = [...weekdays].sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((x) => names[x]).join(' ')
+        return every === 1 ? d : `Ogni ${every} sett. · ${d}`
+      }
+      return every === 1 ? 'Ogni settimana' : `Ogni ${every} settimane`
+    case 'monthly': return every === 1 ? 'Ogni mese' : `Ogni ${every} mesi`
+  }
+}
+
+/** Membro responsabile attuale (per assegnazione a rotazione o fissa). */
+export function currentAssignee(task: Task): string | null {
+  const a = task.assignment
+  if (a.mode === 'member') return a.memberId
+  if (a.mode === 'rotation' && a.memberIds.length > 0) {
+    return a.memberIds[task.completions % a.memberIds.length]
+  }
+  return null
+}
+
+export function uid(prefix = ''): string {
+  return prefix + Math.random().toString(36).slice(2, 8) + Date.now().toString(36).slice(-4)
+}
