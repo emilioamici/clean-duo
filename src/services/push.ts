@@ -79,9 +79,22 @@ export async function disablePush(fileId: string, token: string | null): Promise
 
 export interface PushMessage { recipients: string[]; title: string; body: string; tag?: string; test?: boolean }
 
-/** Chiede al server di inviare una notifica ai destinatari. */
-export async function sendPush(fileId: string, token: string, m: PushMessage): Promise<void> {
-  await post('/notify', token, { fileId, ...m })
+/** Esito dell'invio secondo il server: quanti dispositivi raggiunti, rifiutati dal servizio di push, iscrizioni scadute tolte. */
+export interface PushResult { sent: number; failed: number; removed: number; /** codici HTTP dei rifiuti (se il server li dà) */ codes: number[] }
+
+/** Chiede al server di inviare una notifica ai destinatari e dice com'è andata (0 se il server non indica un campo). */
+export async function sendPush(fileId: string, token: string, m: PushMessage): Promise<PushResult> {
+  const j = (await post('/notify', token, { fileId, ...m })) as Partial<Record<keyof PushResult, unknown>>
+  const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  return { sent: n(j.sent), failed: n(j.failed), removed: n(j.removed), codes: Array.isArray(j.codes) ? j.codes.filter((c): c is number => typeof c === 'number') : [] }
+}
+
+/** Cosa dire a chi ha premuto «Invia notifica di prova», in base a quello che il server ha davvero fatto. */
+export function testPushMessage(r: PushResult): string {
+  if (r.sent > 0) return t('Prova inviata dal server: dovrebbe arrivare tra pochi secondi.')
+  if (r.removed > 0) return t('L\'iscrizione di questo dispositivo era scaduta e il server l\'ha tolta: disattiva e riattiva le notifiche, poi riprova.')
+  if (r.failed > 0) return t('Il server ha provato a inviare ma il servizio di notifiche del telefono ha rifiutato (codice {code}). Disattiva e riattiva le notifiche; se continua, controlla le chiavi VAPID del server.', { code: r.codes.length ? [...new Set(r.codes)].join(', ') : '?' })
+  return t('Il server non ha nessun dispositivo iscritto per la tua email: disattiva e riattiva le notifiche e riprova.')
 }
 
 export interface ScheduledReminder { at: number; title: string; body: string; tag?: string }

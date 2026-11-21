@@ -1,5 +1,9 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "Il server non ha nessun dispositivo iscritto per la tua email: disattiva e riattiva le notifiche e riprova.": "The server has no device subscribed for your email: turn notifications off and on again and retry.",
+  "Il server ha provato a inviare ma il servizio di notifiche del telefono ha rifiutato (codice {code}). Disattiva e riattiva le notifiche; se continua, controlla le chiavi VAPID del server.": "The server tried to send but the phone’s notification service refused (code {code}). Turn notifications off and on again; if it keeps happening, check the server’s VAPID keys.",
+  "L'iscrizione di questo dispositivo era scaduta e il server l'ha tolta: disattiva e riattiva le notifiche, poi riprova.": "This device’s subscription had expired and the server removed it: turn notifications off and on again, then retry.",
+  "Prova inviata dal server: dovrebbe arrivare tra pochi secondi.": "Test sent by the server: it should arrive in a few seconds.",
   "Segna da fare": "Mark as to do",
   "Segna «{name}» da fare": "Mark “{name}” as to do",
   "Errore del server ({status})": "Server error ({status})",
@@ -224,7 +228,6 @@ export const EN: Record<string, string> = {
   "Premio del mese per il vincitore": "Monthly prize for the winner",
   "Promemoria delle azioni da fare": "Reminder of tasks to do",
   "Prossime": "Upcoming",
-  "Prova inviata dal server: dovrebbe arrivare tra pochi secondi (con l'app in background).": "Test sent by the server: it should arrive in a few seconds (with the app in the background).",
   "Prova senza accedere (demo)": "Try without signing in (demo)",
   "Pulire il bagno a fondo": "Deep-clean the bathroom",
   "Pulire il piano cottura": "Clean the hob",
