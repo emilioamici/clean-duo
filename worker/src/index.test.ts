@@ -202,3 +202,43 @@ describe('Tuya', () => {
     expect((await runTuya(env, at(130))).fired).toBe(1) // con intervallo 10 controlla al minuto 130
   })
 })
+
+describe('/notify: esito dell\'invio', () => {
+  async function setup(endpoints: Record<string, number>) {
+    const { publicKey, privateKey } = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify'])
+    const vapidPub = new Uint8Array(await crypto.subtle.exportKey('raw', publicKey))
+    const jwk = await crypto.subtle.exportKey('jwk', privateKey)
+    const b64u = (b: Uint8Array) => Buffer.from(b).toString('base64url')
+    const sub = async (endpoint: string) => {
+      const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])
+      return { endpoint, keys: { p256dh: b64u(new Uint8Array(await crypto.subtle.exportKey('raw', kp.publicKey))), auth: b64u(crypto.getRandomValues(new Uint8Array(16))) }, added: 1 }
+    }
+    const { env, kv } = makeEnv((u) => {
+      if (u.includes('/about')) return new Response(JSON.stringify({ user: { emailAddress: 'a@example.com' } }))
+      if (u.startsWith('https://push.test/')) return new Response(null, { status: endpoints[u.replace('https://push.test/', '')] })
+      return new Response('{"id":"x"}')
+    })
+    ;(env as unknown as Record<string, string>).VAPID_PUBLIC_KEY = b64u(vapidPub)
+    ;(env as unknown as Record<string, string>).VAPID_PRIVATE_KEY = jwk.d!
+    kv.set('s:FILEID12345:b@example.com', JSON.stringify(await Promise.all(Object.keys(endpoints).map((k) => sub('https://push.test/' + k)))))
+    const call = async () => (await worker.fetch(new Request('https://w.example/notify', { method: 'POST', headers: { Origin: 'https://utente.github.io', Authorization: 'Bearer tok', 'Content-Type': 'application/json' }, body: JSON.stringify({ fileId: 'FILEID12345', recipients: ['b@example.com'], title: 'Ciao' }) }), env)).json() as Promise<Record<string, unknown>>
+    return { call, kv }
+  }
+
+  it('sent: 1 quando il servizio di push accetta; nessun campo codes', async () => {
+    const { call } = await setup({ ok: 201 })
+    expect(await call()).toEqual({ ok: true, sent: 1, failed: 0, removed: 0 })
+  })
+
+  it('failed con i codici dei rifiuti (non 2xx e non «gone»); gone conta come removed', async () => {
+    const { call, kv } = await setup({ rifiuta: 403, errore: 500, scaduta: 410 })
+    expect(await call()).toEqual({ ok: true, sent: 0, failed: 2, removed: 1, codes: [403, 500] })
+    expect(JSON.parse(kv.get('s:FILEID12345:b@example.com')!)).toHaveLength(2) // la scaduta è stata tolta
+  })
+
+  it('sent: 0 senza dispositivi iscritti', async () => {
+    const { call, kv } = await setup({ ok: 201 })
+    kv.delete('s:FILEID12345:b@example.com')
+    expect(await call()).toEqual({ ok: true, sent: 0, failed: 0, removed: 0 })
+  })
+})

@@ -7,7 +7,7 @@ import { uid } from '../lib/clean'
 import { mergeDb, sameContent } from '../lib/merge'
 import * as drive from '../services/googleDriveService'
 import { hasSession } from '../services/broker'
-import { PushHttpError, ackAutomationEvents, cancelTimer, deleteTuyaRule, pullAutomationEvents, registerTuyaRule, currentSubscription, disablePush, enablePush, pushConfigured, pushSupported, refreshPush, scheduleReminders, scheduleTimer, sendPush } from '../services/push'
+import { PushHttpError, ackAutomationEvents, cancelTimer, deleteTuyaRule, pullAutomationEvents, registerTuyaRule, currentSubscription, disablePush, enablePush, pushConfigured, pushSupported, refreshPush, scheduleReminders, scheduleTimer, sendPush, testPushMessage } from '../services/push'
 import { enqueue, flushQueue, type QueuedPush, type SendResult } from '../services/pushQueue'
 import { diffNotifications, mergeNotifications, pushTargets, type Notif } from '../lib/notifications'
 import { DEFAULT_REMINDER_TIME, buildReminders, buildTodoNotices, dueNow, reminderText, validTime } from '../lib/reminders'
@@ -799,8 +799,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const fid = metaRef.current.fileId
     const email = meRef.current?.email
     if (prefsRef.current.pushEnabled && pushConfigured() && fid && tk && email && (await currentSubscription())) {
-      await sendPush(fid, tk, { recipients: [email], title: t('Notifica di prova'), body: t('Le notifiche di CleanDuo funzionano.'), tag: 'cleanduo-test', test: true })
-      notify(t('Prova inviata dal server: dovrebbe arrivare tra pochi secondi (con l\'app in background).'))
+      const result = await sendPush(fid, tk, { recipients: [email], title: t('Notifica di prova'), body: t('Le notifiche di CleanDuo funzionano.'), tag: 'cleanduo-test', test: true })
+      notify(testPushMessage(result))
       return
     }
     const opts: NotificationOptions = { body: t('Le notifiche di CleanDuo funzionano su questo dispositivo.'), icon: `${import.meta.env.BASE_URL}pwa-192.png`, tag: 'cleanduo-test' }
