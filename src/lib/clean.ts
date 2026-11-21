@@ -56,7 +56,8 @@ export function nextDue(task: Task, roomId?: string): number | null {
   const n = Math.max(1, every || 1)
   const ref = last ?? task.createdAt
 
-  if (type === 'once') return last ? null : startOfDay(task.createdAt)
+  // «su richiesta»: da fare finché non è fatta la prima volta e ogni volta che viene segnata «da fare» dopo l'ultimo completamento
+  if (type === 'once') return !last ? startOfDay(task.createdAt) : task.todoAt && task.todoAt > last ? startOfDay(task.todoAt) : null
 
   if (type === 'daily') {
     return last ? startOfDay(ref) + n * DAY : startOfDay(ref)

@@ -1,5 +1,7 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "Segna da fare": "Mark as to do",
+  "Segna «{name}» da fare": "Mark “{name}” as to do",
   "Errore del server ({status})": "Server error ({status})",
   "Per far entrare gli invitati senza il selettore di Google attiva l’accesso persistente (Sincronizzazione e account).": "To let invited people in without Google’s file picker, turn on persistent sign-in (Sync and account).",
   "Sei entrato dall’invito: gli inviti ai nuovi membri li fa chi ha creato la casa.": "You joined from an invitation: invitations to new members are sent by whoever created the house.",
