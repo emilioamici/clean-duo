@@ -434,3 +434,26 @@ describe('azioni su richiesta', () => {
     expect(old.tasks[1].archived).toBe(true) // le altre non si toccano
   })
 })
+
+describe('«su richiesta»: segna da fare', () => {
+  it('torna da fare dopo il segno, finché non viene completata di nuovo', async () => {
+    const { nextDue } = await import('./clean')
+    const { applyCompletion } = await import('./rooms')
+    const db = createDemoDb()
+    const t0 = { ...db.tasks[0], recurrence: { type: 'once' as const, every: 1 }, lastCompletedAt: null, completions: 0, todoAt: null }
+    const done = applyCompletion(t0, [], 1_000_000_000_000)
+    expect(nextDue(done)).toBeNull()
+    const marked = { ...done, todoAt: done.lastCompletedAt! + 60_000 }
+    expect(nextDue(marked)).not.toBeNull()
+    const again = applyCompletion(marked, [], marked.todoAt! + 60_000)
+    expect(nextDue(again)).toBeNull()
+  })
+  it('con il flag, segnarla da fare avvisa gli altri', () => {
+    const db = createDemoDb()
+    const once = { ...db.tasks[0], recurrence: { type: 'once' as const, every: 1 }, notifyWhenTodo: true, lastCompletedAt: 5, todoAt: null }
+    const prev = { ...db, tasks: [once, ...db.tasks.slice(1)] }
+    const next = { ...db, tasks: [{ ...once, todoAt: 9999 }, ...db.tasks.slice(1)] }
+    expect(changeEvents(prev, next).filter((e) => e.kind === 'todo')).toHaveLength(1)
+    expect(changeEvents(next, next).filter((e) => e.kind === 'todo')).toHaveLength(0)
+  })
+})

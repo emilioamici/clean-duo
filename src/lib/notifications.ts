@@ -1,7 +1,7 @@
 import type { AppDatabase, Member, NotifyPrefs } from '../types'
 import { t } from '../i18n'
 import { taskRooms } from './rooms'
-import { isWaiting } from './deps'
+import { isOnDemand, isWaiting } from './deps'
 
 export type NotifKind = 'done' | 'task' | 'member' | 'reminder' | 'todo'
 
@@ -74,11 +74,14 @@ export function changeEvents(prev: AppDatabase, next: AppDatabase): ChangeEvent[
 
   // azioni «in attesa» che diventano «da fare» (dopo un'altra azione): solo se hanno il flag. Quelle da dispositivo le notifica il server.
   const before = new Map(prev.tasks.map((x) => [x.id, x]))
-  const woke = next.tasks.filter((x) => x.notifyWhenTodo && x.afterTaskId && !x.onEvent && !x.archived && !isWaiting(x) && before.has(x.id) && isWaiting(before.get(x.id)!))
+  const woke = next.tasks.filter((x) => x.notifyWhenTodo && !x.archived && before.has(x.id) && (
+    (x.afterTaskId && !x.onEvent && !isWaiting(x) && isWaiting(before.get(x.id)!)) ||
+    (isOnDemand(x) && !!x.todoAt && x.todoAt !== before.get(x.id)!.todoAt) // «su richiesta» segnata da fare
+  ))
   if (woke.length <= MASS_LIMIT) {
     for (const x of woke) {
       out.push({
-        kind: 'todo', key: `todo:${x.id}:${x.triggeredAt ?? 0}`, actor: null, taskId: x.id,
+        kind: 'todo', key: `todo:${x.id}:${x.todoAt ?? x.triggeredAt ?? 0}`, actor: null, taskId: x.id,
         title: t('«{task}» è ora da fare', { task: x.name }),
         body: [taskRooms(x).map(room).filter(Boolean).join(', '), `${x.stars} ⭐`].filter(Boolean).join(' · '),
       })

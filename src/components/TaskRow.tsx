@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion'
-import { Check, Link2, Play, Repeat, StickyNote, Timer, X } from 'lucide-react'
+import { Check, ClipboardList, Link2, Play, Repeat, StickyNote, Timer, X } from 'lucide-react'
 import { useState } from 'react'
 import type { Task } from '../types'
-import { currentAssignee, dueLabel, recurrenceLabel, urgencyOf, type Urgency } from '../lib/clean'
+import { currentAssignee, dueLabel, nextDue, recurrenceLabel, urgencyOf, type Urgency } from '../lib/clean'
 import { t } from '../i18n'
-import { isWaiting } from '../lib/deps'
+import { isOnDemand, isWaiting } from '../lib/deps'
 import { taskRooms } from '../lib/rooms'
 import { durationLabel, isRunning, remainingLabel, remainingMs, timeOfDay } from '../lib/timers'
 import { useNow } from '../lib/useNow'
@@ -28,7 +28,7 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
   const { db } = useApp()
   const [noteOpen, setNoteOpen] = useState(false)
   const { complete, finish, openTaskSheet } = useUi()
-  const { cancelTimer } = useApp()
+  const { cancelTimer, markTodo } = useApp()
   const now = useNow(15_000)
   const running = isRunning(task)
   const before = task.afterTaskId ? db.tasks.find((x) => x.id === task.afterTaskId) : undefined
@@ -102,6 +102,18 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
           </motion.button>
         </span>
       ) : (
+        <>
+        {isOnDemand(task) && nextDue(task, roomId) === null && (
+          <motion.button
+            whileTap={{ scale: 0.82 }}
+            onClick={() => { markTodo(task.id); try { navigator.vibrate?.(15) } catch { /* non supportato (iOS) */ } }}
+            className="glass-btn !h-10 !w-10 shrink-0 !p-0 text-muted"
+            aria-label={t('Segna «{name}» da fare', { name: task.name })}
+            title={t('Segna da fare')}
+          >
+            <ClipboardList size={18} />
+          </motion.button>
+        )}
         <motion.button
           whileTap={{ scale: 0.82 }}
           onClick={(e) => {
@@ -113,6 +125,7 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
         >
           {task.durationMin ? <Play size={22} strokeWidth={2.6} className="fill-current" /> : <Check size={24} strokeWidth={3} />}
         </motion.button>
+        </>
       )}
       </div>
       {task.notes && (

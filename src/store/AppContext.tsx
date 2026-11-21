@@ -13,7 +13,7 @@ import { diffNotifications, mergeNotifications, pushTargets, type Notif } from '
 import { DEFAULT_REMINDER_TIME, buildReminders, buildTodoNotices, dueNow, reminderText, validTime } from '../lib/reminders'
 import { t } from '../i18n'
 import { finalizeTimers, finishEarly, startRunning, timerLogId } from '../lib/timers'
-import { triggerDependents, unlinkMissing } from '../lib/deps'
+import { isOnDemand, triggerDependents, unlinkMissing } from '../lib/deps'
 import { applyCompletion, removeRoom, setRooms, taskRooms } from '../lib/rooms'
 import { undoCompletion } from '../lib/history'
 import { clearInvite, inviteLink } from '../services/invite'
@@ -127,6 +127,8 @@ interface Ctx {
   completeTask: (taskId: string, memberId: string, roomIds?: string[]) => number
   /** Annulla un completamento dalla cronologia: le stelle si tolgono e l'azione torna da fare. */
   deleteLog: (logId: string) => void
+  /** «Su richiesta»: la segna «da fare», così compare tra le cose da fare. */
+  markTodo: (taskId: string) => void
   /** Avvia l'azione con durata: resta «in corso» e si completa da sola alla fine. Ritorna l'ora di fine (ms). */
   startTimer: (taskId: string, memberId: string, roomIds?: string[]) => number | null
   /** Annulla un'azione in corso senza completarla. */
@@ -576,6 +578,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return task.stars
   }
 
+  const markTodo: Ctx['markTodo'] = (taskId) => mutate((d) => {
+    const now = Date.now()
+    return { ...d, tasks: d.tasks.map((x) => (x.id === taskId && isOnDemand(x) ? { ...x, todoAt: now, updatedAt: now } : x)) }
+  })
+
   const deleteLog: Ctx['deleteLog'] = (logId) => mutate((d) => undoCompletion(d, logId))
 
   const upsertMember: Ctx['upsertMember'] = (m) => {
@@ -824,7 +831,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, config, setConfig, theme, setTheme, meId, me, setMeId, toast, notify,
     persistent, prefs, setPrefs, notifications, unread, markRead, markAllRead, clearNotifications, toastNotif, dismissToastNotif, centerOpen, setCenterOpen,
     enableNotifications, disableNotifications, sendTestPush,
-    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, deleteLog, saveAutomation, deleteAutomation, pullEvents, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
+    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, markTodo, deleteLog, saveAutomation, deleteAutomation, pullEvents, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
     demoSkipped, setDemoSkipped, offlineSkipped, setOfflineSkipped,
     syncNow, connect, reconnect, createHouse, joinHouse, shareWith, disconnect, resetDemo,
   }
