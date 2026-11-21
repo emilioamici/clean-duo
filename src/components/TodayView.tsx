@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { Star } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { nextDue, urgencyOf } from '../lib/clean'
@@ -102,9 +102,8 @@ export function TodayView() {
       </div>
 
       <div className="mt-3 space-y-3">
-        <AnimatePresence mode="popLayout">
-          {list.map((x) => <TaskRow key={x.id} task={x} />)}
-        </AnimatePresence>
+        {/* niente AnimatePresence: la riga che esce non deve dipendere da un'animazione di uscita (su Safari poteva restare lì fino al cambio di scheda); le altre scorrono con `layout` */}
+        {list.map((x) => <TaskRow key={x.id} task={x} />)}
         {list.length === 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="card flex flex-col items-center gap-2 px-6 py-8 text-center">
             <MascotImg kind="zenitsu" className="h-20 w-auto" />
