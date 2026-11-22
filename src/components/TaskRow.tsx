@@ -6,7 +6,7 @@ import { currentAssignee, dueLabel, nextDue, recurrenceLabel, urgencyOf, type Ur
 import { t } from '../i18n'
 import { isOnDemand, isWaiting } from '../lib/deps'
 import { taskRooms } from '../lib/rooms'
-import { durationLabel, isRunning, remainingLabel, remainingMs, timeOfDay } from '../lib/timers'
+import { durationLabel, isAutoRunning, isRunning, remainingLabel, remainingMs, timeOfDay } from '../lib/timers'
 import { useNow } from '../lib/useNow'
 import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
@@ -66,7 +66,9 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
           <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
             {running ? (
               <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand/15 px-2 py-0.5 text-[11px] font-semibold text-brand">
-                <Timer size={11} />{t('In corso · finisce alle {time} ({left})', { time: timeOfDay(task.runningUntil!), left: remainingLabel(remainingMs(task, now)) })}
+                <Timer size={11} />{isAutoRunning(task)
+                  ? t('In corso dalle {time} · attende la fine', { time: timeOfDay(task.autoRunSince!) })
+                  : t('In corso · finisce alle {time} ({left})', { time: timeOfDay(task.runningUntil!), left: remainingLabel(remainingMs(task, now)) })}
               </span>
             ) : waiting ? (
               <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-line/70 px-2 py-0.5 text-[11px] font-semibold text-muted"><Link2 size={11} />{task.onEvent ? t('In attesa del dispositivo «{name}»', { name: device?.name ?? '…' }) : t('In attesa di «{task}»', { task: before?.name ?? '…' })}</span>

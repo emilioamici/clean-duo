@@ -7,12 +7,12 @@ import { uid } from '../lib/clean'
 import { mergeDb, sameContent } from '../lib/merge'
 import * as drive from '../services/googleDriveService'
 import { hasSession } from '../services/broker'
-import { PushHttpError, ackAutomationEvents, cancelTimer, deleteTuyaRule, pullAutomationEvents, registerTuyaRule, currentSubscription, disablePush, enablePush, pushConfigured, pushSupported, refreshPush, scheduleReminders, scheduleTimer, sendPush, testPushMessage } from '../services/push'
+import { PushHttpError, ackAutomationEvents, cancelTimer, deleteCycleHook, deleteTuyaRule, registerCycleHook, pullAutomationEvents, registerTuyaRule, currentSubscription, disablePush, enablePush, pushConfigured, pushSupported, refreshPush, scheduleReminders, scheduleTimer, sendPush, testPushMessage } from '../services/push'
 import { enqueue, flushQueue, type QueuedPush, type SendResult } from '../services/pushQueue'
 import { diffNotifications, mergeNotifications, pushTargets, type Notif } from '../lib/notifications'
 import { DEFAULT_REMINDER_TIME, buildReminders, buildTodoNotices, dueNow, reminderText, validTime } from '../lib/reminders'
 import { t } from '../i18n'
-import { finalizeTimers, finishEarly, startRunning, timerLogId } from '../lib/timers'
+import { finalizeTimers, finishEarly, isAutoStale, startRunning, timerLogId } from '../lib/timers'
 import { isOnDemand, triggerDependents, unlinkMissing } from '../lib/deps'
 import { applyCompletion, removeRoom, setRooms, taskRooms } from '../lib/rooms'
 import { undoCompletion } from '../lib/history'
@@ -442,7 +442,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const tick = () => {
       const now = Date.now()
-      if (!dbRef.current.tasks.some((x) => x.runningUntil && x.runningUntil <= now)) return
+      if (!dbRef.current.tasks.some((x) => (x.runningUntil && x.runningUntil <= now) || isAutoStale(x, now))) return
       const prev = dbRef.current
       mutate((d) => finalizeTimers(d, now))
       const next = dbRef.current
@@ -543,6 +543,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const finishTimer: Ctx['finishTimer'] = (taskId) => {
     const task = dbRef.current.tasks.find((x) => x.id === taskId)
+    // «in corso» per il segnale di un dispositivo: «Completa ora» è un completamento di chi preme (le stelle vanno a lui)
+    if (task?.autoRunSince && !task.runningUntil) { const who = meRef.current; return who ? completeTask(taskId, who.id) : 0 }
     if (!task?.runningUntil) return 0
     const prev = dbRef.current
     cancelServerTimer(taskId, task.runningUntil) // la notifica la mandiamo subito noi: quella programmata non deve arrivare dopo
@@ -554,7 +556,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 
   const cancelTimerFn: Ctx['cancelTimer'] = (taskId) => {
-    const until = dbRef.current.tasks.find((x) => x.id === taskId)?.runningUntil
+    const t0 = dbRef.current.tasks.find((x) => x.id === taskId)
+    if (t0?.autoRunSince && !t0.runningUntil) { mutate((d) => ({ ...d, tasks: d.tasks.map((x) => (x.id === taskId ? { ...x, autoRunSince: null, autoRunRule: undefined, updatedAt: Date.now() } : x)) })); return }
+    const until = t0?.runningUntil
     if (!until) return
     cancelServerTimer(taskId, until)
     mutate((d) => ({ ...d, tasks: d.tasks.map((x) => (x.id === taskId ? { ...x, runningUntil: null, runningBy: undefined, runningRooms: undefined, updatedAt: Date.now() } : x)) }))
@@ -724,8 +728,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  /** Indirizzi di destinazione delle notifiche di un'automazione: tutti i membri con email. */
+  const houseEmails = () => dbRef.current.members.map((m) => m.email).filter((e): e is string => !!e)
+
   const saveAutomation: Ctx['saveAutomation'] = async (a) => {
     const full: Automation = { ...a, updatedAt: Date.now() }
+    const tk = drive.currentToken()
+    const fid = metaRef.current.fileId
+    if (a.kind === 'cycle') {
+      // inizio/fine ciclo: l'azione collegata resta com'è (con la sua ricorrenza); il dispositivo la mette «in corso» e la completa
+      mutate((d) => ({ ...d, automations: [...(d.automations ?? []).filter((x) => x.id !== a.id), full] }))
+      try {
+        if (!tk || !fid || !pushConfigured()) throw new Error(t('Per collegare un dispositivo serve una casa su Drive, il server delle notifiche e l\'accesso a Google attivo.'))
+        if (a.enabled) {
+          const task = dbRef.current.tasks.find((x) => x.id === a.taskId)
+          const token = await registerCycleHook(fid, tk, { ruleId: a.id, recipients: houseEmails(), title: t('«{task}» è finita', { task: task?.name ?? a.name }), body: a.name })
+          if (token !== a.hookToken) mutate((d) => ({ ...d, automations: (d.automations ?? []).map((x) => (x.id === a.id ? { ...x, hookToken: token, updatedAt: Date.now() } : x)) }))
+        } else await deleteCycleHook(fid, tk, a.id)
+        return null
+      } catch (e) { return e instanceof Error ? e.message : String(e) }
+    }
     // l'azione collegata resta «in attesa» finché il dispositivo non segnala
     mutate((d) => ({
       ...d,
@@ -734,7 +756,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }))
     try {
       if (a.enabled) await registerRule(full)
-      else { const tk = drive.currentToken(); const fid = metaRef.current.fileId; if (tk && fid && pushConfigured()) await deleteTuyaRule(fid, tk, a.id) }
+      else { if (tk && fid && pushConfigured()) await deleteTuyaRule(fid, tk, a.id) }
       return null
     } catch (e) { return e instanceof Error ? e.message : String(e) }
   }
@@ -742,11 +764,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteAutomation: Ctx['deleteAutomation'] = async (id) => {
     const tk = drive.currentToken()
     const fid = metaRef.current.fileId
-    if (tk && fid && pushConfigured()) await deleteTuyaRule(fid, tk, id).catch(() => undefined)
+    const cycle = (dbRef.current.automations ?? []).find((x) => x.id === id)?.kind === 'cycle'
+    if (tk && fid && pushConfigured()) await (cycle ? deleteCycleHook(fid, tk, id) : deleteTuyaRule(fid, tk, id)).catch(() => undefined)
     mutate((d) => ({
       ...d,
       automations: (d.automations ?? []).filter((x) => x.id !== id),
-      tasks: d.tasks.map((x) => (x.onEvent === id ? { ...x, onEvent: undefined, triggeredAt: null, updatedAt: Date.now() } : x)),
+      tasks: d.tasks.map((x) => (x.onEvent === id ? { ...x, onEvent: undefined, triggeredAt: null, updatedAt: Date.now() } : x.autoRunRule === id ? { ...x, autoRunSince: null, autoRunRule: undefined, updatedAt: Date.now() } : x)),
       tombstones: tomb(d, [id]),
     }))
   }

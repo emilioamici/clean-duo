@@ -6,7 +6,12 @@ import { applyCompletion, taskRooms } from './rooms'
 export const MAX_DURATION_MIN = 24 * 60
 export const DURATION_PRESETS = [15, 30, 45, 60, 90, 120, 180]
 
-export const isRunning = (task: Task): boolean => !!task.runningUntil && !task.archived
+/** Se il segnale di fine non arriva, dopo questo tempo lo stato «in corso» del dispositivo si toglie (senza completare). */
+export const AUTO_RUN_MAX_MS = 4 * 3600_000
+
+export const isAutoRunning = (task: Task): boolean => !!task.autoRunSince && !task.runningUntil && !task.archived
+export const isRunning = (task: Task): boolean => (!!task.runningUntil || !!task.autoRunSince) && !task.archived
+export const isAutoStale = (task: Task, now = Date.now()): boolean => !!task.autoRunSince && task.autoRunSince + AUTO_RUN_MAX_MS <= now
 export const remainingMs = (task: Task, now = Date.now()): number => Math.max(0, (task.runningUntil ?? 0) - now)
 
 /** «45 min», «1 h», «1 h 30» */
@@ -66,6 +71,10 @@ function applyFinish(db: AppDatabase, items: Array<{ task: Task; end: number; ea
  * e toglie lo stato «in corso». Ritorna lo stesso oggetto se non c'è nulla da fare (idempotente tra dispositivi).
  */
 export function finalizeTimers(db: AppDatabase, now = Date.now()): AppDatabase {
+  // «in corso» da dispositivo senza segnale di fine da troppo: si toglie lo stato, ma non si completa (il segnale potrebbe arrivare dopo)
+  if (db.tasks.some((x) => isAutoStale(x, now))) {
+    db = { ...db, tasks: db.tasks.map((x) => (isAutoStale(x, now) ? { ...x, autoRunSince: null, autoRunRule: undefined, updatedAt: now } : x)) }
+  }
   const due = db.tasks.filter((x) => x.runningUntil && x.runningUntil <= now)
   return due.length === 0 ? db : applyFinish(db, due.map((x) => ({ task: x, end: x.runningUntil! })), now)
 }

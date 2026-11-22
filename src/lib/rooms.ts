@@ -34,6 +34,7 @@ export function applyCompletion(task: Task, done: string[], at: number, now = at
     completions: task.completions + 1,
     archived: false, // anche le azioni su richiesta restano: si possono rifare
     triggeredAt: isEventDriven(task) ? null : task.triggeredAt,
+    autoRunSince: null, autoRunRule: undefined, // un completamento chiude anche lo stato «in corso» del dispositivo
     updatedAt: now,
   }
 }

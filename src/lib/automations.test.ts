@@ -70,3 +70,61 @@ describe('automazioni con i dispositivi', () => {
     expect(m.tasks.find((x) => x.id === 'feed')!.onEvent).toBeUndefined()
   })
 })
+
+describe('ciclo di un dispositivo (Roomba)', () => {
+  const setup = () => {
+    const db = createDemoDb()
+    const task = { ...db.tasks[0], id: 'asp', name: 'Passare l’aspirapolvere', recurrence: { type: 'weekly' as const, every: 1 }, lastCompletedAt: null, completions: 0, durationMin: undefined }
+    const auto = { id: 'a-roomba', kind: 'cycle' as const, name: 'Roomba', deviceId: '', code: '', op: 'eq' as const, value: '', taskId: 'asp', enabled: true, hookToken: 'tok', updatedAt: 1 }
+    return { ...db, tasks: [task, ...db.tasks.slice(1)], automations: [auto] }
+  }
+  const now = Date.now()
+
+  it('«start» mette l’azione in corso senza ora di fine, senza cambiare la sua ricorrenza', async () => {
+    const { isRunning, isAutoRunning } = await import('./timers')
+    const db = applyAutomationEvents(setup(), [{ id: 'e1', ruleId: 'a-roomba', at: now - 60_000, kind: 'start' }], now)
+    const t0 = db.tasks[0]
+    expect(isRunning(t0)).toBe(true); expect(isAutoRunning(t0)).toBe(true)
+    expect(t0.runningUntil).toBeFalsy()
+    expect(t0.onEvent).toBeUndefined(); expect(t0.recurrence.type).toBe('weekly')
+    expect(db.automations![0].lastFiredAt).toBe(now - 60_000)
+  })
+
+  it('«finish» la completa senza membro e senza stelle, e lo stato «in corso» si chiude; è idempotente', () => {
+    const started = applyAutomationEvents(setup(), [{ id: 'e1', ruleId: 'a-roomba', at: now - 3_600_000, kind: 'start' }], now)
+    const ev = { id: 'e2', ruleId: 'a-roomba', at: now - 60_000, kind: 'finish' as const }
+    const done = applyAutomationEvents(started, [ev], now)
+    expect(done.tasks[0].autoRunSince).toBeNull()
+    expect(done.tasks[0].lastCompletedAt).toBe(ev.at)
+    expect(done.tasks[0].completions).toBe(1)
+    const log = done.logs[0]
+    expect(log).toMatchObject({ taskId: 'asp', memberId: '', stars: 0, auto: true, timer: true })
+    // lo stesso segnale applicato di nuovo (altro dispositivo) non cambia nulla
+    const again = applyAutomationEvents(done, [ev], now + 1000)
+    expect(again.logs.filter((l) => l.taskId === 'asp' && l.auto)).toHaveLength(1)
+    expect(again.tasks[0].completions).toBe(1)
+  })
+
+  it('segnali fuori ordine o troppo vecchi non lasciano l’azione «in corso» per sempre', () => {
+    const old = applyAutomationEvents(setup(), [{ id: 'e1', ruleId: 'a-roomba', at: now - 6 * 3_600_000, kind: 'start' }], now)
+    expect(old.tasks[0].autoRunSince).toBeFalsy()
+    // «finish» arrivato prima dello «start» nello stesso invio: si ordinano per ora, quindi finisce completata e non in corso
+    const both = applyAutomationEvents(setup(), [
+      { id: 'e2', ruleId: 'a-roomba', at: now - 10_000, kind: 'finish' }, { id: 'e1', ruleId: 'a-roomba', at: now - 600_000, kind: 'start' },
+    ], now)
+    expect(both.tasks[0].autoRunSince).toBeNull(); expect(both.tasks[0].completions).toBe(1)
+    // automazione disattivata: nessun effetto
+    const off = { ...setup(), automations: [{ ...setup().automations[0], enabled: false }] }
+    expect(applyAutomationEvents(off, [{ id: 'e', ruleId: 'a-roomba', at: now, kind: 'start' }], now).tasks[0].autoRunSince).toBeFalsy()
+  })
+
+  it('se il «finito» non arriva, dopo 4 ore lo stato «in corso» si toglie senza completare; un completamento a mano lo chiude subito', async () => {
+    const { finalizeTimers, AUTO_RUN_MAX_MS } = await import('./timers')
+    const { applyCompletion } = await import('./rooms')
+    const started = applyAutomationEvents(setup(), [{ id: 'e1', ruleId: 'a-roomba', at: now, kind: 'start' }], now)
+    expect(finalizeTimers(started, now + AUTO_RUN_MAX_MS - 1000)).toBe(started)
+    const stale = finalizeTimers(started, now + AUTO_RUN_MAX_MS + 1000)
+    expect(stale.tasks[0].autoRunSince).toBeNull(); expect(stale.tasks[0].completions).toBe(0); expect(stale.logs).toHaveLength(started.logs.length)
+    expect(applyCompletion(started.tasks[0], [], now + 5000).autoRunSince).toBeNull()
+  })
+})

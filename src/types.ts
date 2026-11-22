@@ -72,6 +72,10 @@ export interface Task {
   runningUntil?: number | null
   /** Chi l'ha avviata: a lui vanno le stelle */
   runningBy?: string
+  /** «In corso» senza ora di fine: da quando (ms) un dispositivo ha segnalato l'inizio del ciclo. Finisce con il segnale di fine */
+  autoRunSince?: number | null
+  /** automazione che l'ha avviata */
+  autoRunRule?: string
   /** Stanze per cui verrà completata alla fine (assente = tutte) */
   runningRooms?: string[]
   /** Non più usato per le azioni «su richiesta» (restano visibili); resta per i dati delle versioni precedenti */
@@ -93,6 +97,8 @@ export interface ActivityLog {
   timer?: boolean
   /** completata prima della fine della durata, con «Completa ora» */
   early?: boolean
+  /** completata dal segnale di un dispositivo (es. fine del ciclo del Roomba): nessun membro, nessuna stella */
+  auto?: boolean
   /** stato dell'azione prima di questo completamento (per poterlo annullare esattamente) */
   prev?: number | null
   prevTrigger?: number | null
@@ -108,7 +114,8 @@ export interface Settings {
 /** Collegamento a un dispositivo (per ora Tuya): quando la condizione si verifica, l'azione collegata va tra le cose da fare. */
 export interface Automation {
   id: string
-  kind: 'tuya'
+  /** `tuya`: quando un dato del dispositivo soddisfa la condizione l'azione va «da fare». `cycle`: l'azione va «in corso» all'inizio del ciclo e si completa alla fine (es. Roomba, via IFTTT) */
+  kind: 'tuya' | 'cycle'
   name: string
   deviceId: string
   /** codice del dato del dispositivo (es. «fault») */
@@ -118,6 +125,8 @@ export interface Automation {
   /** azione che diventa «da fare» */
   taskId: string
   enabled: boolean
+  /** `cycle`: codice segreto dell'indirizzo che il dispositivo (IFTTT…) chiama per segnalare inizio e fine */
+  hookToken?: string
   /** ultima volta che il dispositivo ha segnalato (ms) */
   lastFiredAt?: number
   updatedAt: number
