@@ -11,7 +11,7 @@ function usedKeys(): string[] {
     for (const f of readdirSync(d)) {
       const p = join(d, f)
       if (statSync(p).isDirectory()) walk(p)
-      else if (/\.(ts|tsx)$/.test(f) && !/\.test\./.test(f) && !p.includes('i18n/en.ts') && !p.includes('i18n/index.ts')) {
+      else if (/\.(ts|tsx)$/.test(f) && !/\.test\./.test(f) && !p.replace(/\\/g, '/').includes('i18n/en.ts') && !p.replace(/\\/g, '/').includes('i18n/index.ts')) {
         const s = readFileSync(p, 'utf8')
         for (const m of s.matchAll(/\b(?:t|tr|tb)\('((?:[^'\\\n]|\\.)*)'/g)) out.add(m[1].replace(/\\'/g, "'").replace(/\\\\/g, '\\').replace(/\\n/g, '\n'))
       }

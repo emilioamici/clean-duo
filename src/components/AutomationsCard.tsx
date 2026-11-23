@@ -55,7 +55,7 @@ export function AutomationsCard() {
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand/15 text-brand"><Zap size={18} /></span>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-bold">{a.name}{!a.enabled && <span className="ml-2 text-xs font-normal text-muted">{t('disattivata')}</span>}</p>
-                <p className="truncate text-xs text-muted">{describeAutomation(a)}{a.kind === 'shortcut' ? '' : ` → ${task?.name ?? '…'}`}</p>
+                <p className="truncate text-xs text-muted">{describeAutomation(a)}{a.kind === 'shortcut' ? (task ? ` → ${task.name}` : '') : ` → ${task?.name ?? '…'}`}</p>
                 {a.lastError && <p className="truncate text-[11px] font-semibold text-exp">{a.lastError}</p>}
                 <p className="text-[11px] text-muted">{a.lastFiredAt ? t('Ultimo segnale: {when}', { when: timeAgo(a.lastFiredAt) }) : t('Nessun segnale ancora')}</p>
               </div>
