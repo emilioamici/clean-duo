@@ -128,3 +128,69 @@ describe('ciclo di un dispositivo (Roomba)', () => {
     expect(applyCompletion(started.tasks[0], [], now + 5000).autoRunSince).toBeNull()
   })
 })
+
+describe('comandi da Shortcuts', () => {
+  const now = Date.now()
+  const setup = () => {
+    const db = createDemoDb()
+    const mk = (id: string, name: string, over: object = {}) => ({ ...db.tasks[0], id, name, recurrence: { type: 'weekly' as const, every: 1 }, lastCompletedAt: null, completions: 0, durationMin: undefined, runningUntil: null, autoRunSince: null, notifyWhenTodo: false, ...over })
+    const tasks = [mk('tt', 'Lettiera', { recurrence: { type: 'once' as const, every: 1 }, lastCompletedAt: now - 86_400_000, completions: 1 }), mk('lav', 'Lavatrice', { durationMin: 60 }), mk('pia', 'Piatti'), mk('dup', 'Piatti')]
+    const auto = { id: 'a-sc', kind: 'shortcut' as const, name: 'Shortcuts', deviceId: '', code: '', op: 'eq' as const, value: '', taskId: '', enabled: true, hookToken: 'tok', updatedAt: 1 }
+    return { ...db, tasks, automations: [auto], logs: [] }
+  }
+  const cmd = (db: AppDatabase, over: object, at = now - 1000) => applyAutomationEvents(db, [{ id: `e-${at}-${Math.random()}`, ruleId: 'a-sc', at, kind: 'act', who: 'm1', ...over } as any], now)
+  const get = (db: AppDatabase, id: string) => db.tasks.find((x) => x.id === id)!
+
+  it('«todo» rimette in to-do un\'azione su richiesta e la tiene lì finché non è completata', () => {
+    const db = cmd(setup(), { task: 'Lettiera', do: 'todo' })
+    expect(nextDue(get(db, 'tt'))).not.toBeNull()
+    expect(db.automations![0].lastError).toBeUndefined()
+    const done = cmd(db, { task: 'tt', do: 'complete' }, now - 500)
+    expect(nextDue(get(done, 'tt'))).toBeNull()
+    expect(done.logs[0]).toMatchObject({ memberId: 'm1', stars: get(done, 'tt').stars })
+  })
+
+  it('senza «do» decide lo stato: avvia se ha una durata, finisce se è in corso, altrimenti completa', () => {
+    const started = cmd(setup(), { task: 'Lavatrice' })
+    expect(get(started, 'lav').runningUntil).toBe(now - 1000 + 60 * 60_000)
+    expect(get(started, 'lav').runningBy).toBe('m1')
+    const finished = cmd(started, { task: 'Lavatrice' }, now - 500)
+    expect(get(finished, 'lav').runningUntil).toBeNull()
+    expect(finished.logs.some((l) => l.taskId === 'lav' && l.memberId === 'm1')).toBe(true)
+    const plain = cmd(setup(), { task: 'dup', do: undefined })
+    expect(get(plain, 'dup').completions).toBe(1)
+  })
+
+  it('lo stesso comando applicato due volte ha un solo effetto (anche dopo il merge)', () => {
+    const ev = { id: 'e1', ruleId: 'a-sc', at: now - 1000, kind: 'act' as const, task: 'Lavatrice', who: 'm1' }
+    const once = applyAutomationEvents(setup(), [ev], now)
+    const twice = applyAutomationEvents(once, [ev], now + 5000)
+    expect(get(twice, 'lav').runningUntil).toBe(get(once, 'lav').runningUntil) // non diventa «finisci»
+    expect(get(twice, 'lav').lastCommandAt).toBe(ev.at)
+    const merged = mergeDb(once, applyAutomationEvents(setup(), [ev], now))
+    expect(get(applyAutomationEvents(merged, [ev], now), 'lav').runningUntil).toBe(get(once, 'lav').runningUntil)
+  })
+
+  it('nome sbagliato o ambiguo: nessun effetto e l\'errore si vede; membro sconosciuto: nessuna stella; start a tempo senza membro: ignorato', () => {
+    const wrong = cmd(setup(), { task: 'Inesistente' })
+    expect(wrong.automations![0].lastError).toContain('non riconosciuta')
+    expect(wrong.tasks).toEqual(setup().tasks)
+    expect(cmd(setup(), { task: 'Piatti' }).automations![0].lastError).toContain('Più azioni')
+    const noStars = cmd(setup(), { task: 'pia', who: 'sconosciuto' })
+    expect(noStars.logs[0]).toMatchObject({ memberId: '', stars: 0, auto: true })
+    expect(get(cmd(setup(), { task: 'Lavatrice', who: undefined }), 'lav').runningUntil).toBeFalsy()
+  })
+
+  it('i timer già scaduti si chiudono all\'ora giusta prima del comando: «avvia» dopo un timer finito avvia, non finisce', () => {
+    const base = setup()
+    const long = { ...base, tasks: base.tasks.map((x) => (x.id === 'lav' ? { ...x, runningUntil: now - 3_000_000, runningBy: 'm1' } : x)) }
+    const out = cmd(long, { task: 'Lavatrice' }, now - 1000)
+    expect(get(out, 'lav').runningUntil).toBe(now - 1000 + 60 * 60_000) // il vecchio è finito da sé, questo è un nuovo avvio
+    expect(out.logs.filter((l) => l.taskId === 'lav')).toHaveLength(1)
+  })
+
+  it('automazione disattivata: nessun effetto', () => {
+    const off = { ...setup(), automations: [{ ...setup().automations[0], enabled: false }] }
+    expect(cmd(off, { task: 'Piatti' }).tasks).toEqual(off.tasks)
+  })
+})

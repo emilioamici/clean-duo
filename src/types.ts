@@ -72,6 +72,8 @@ export interface Task {
   runningUntil?: number | null
   /** Chi l'ha avviata: a lui vanno le stelle */
   runningBy?: string
+  /** Ora dell'ultimo comando esterno (Shortcuts…) applicato a questa azione: un comando non più recente non si applica due volte */
+  lastCommandAt?: number
   /** «In corso» senza ora di fine: da quando (ms) un dispositivo ha segnalato l'inizio del ciclo. Finisce con il segnale di fine */
   autoRunSince?: number | null
   /** automazione che l'ha avviata */
@@ -114,8 +116,8 @@ export interface Settings {
 /** Collegamento a un dispositivo (per ora Tuya): quando la condizione si verifica, l'azione collegata va tra le cose da fare. */
 export interface Automation {
   id: string
-  /** `tuya`: quando un dato del dispositivo soddisfa la condizione l'azione va «da fare». `cycle`: l'azione va «in corso» all'inizio del ciclo e si completa alla fine (es. Roomba, via IFTTT) */
-  kind: 'tuya' | 'cycle'
+  /** `tuya`: quando un dato del dispositivo soddisfa la condizione l'azione va «da fare». `shortcut`: comandi da Shortcuts di iPhone (un indirizzo per casa: avvia, completa, finisci o segna da fare un'azione). `cycle`: l'azione va «in corso» all'inizio del ciclo e si completa alla fine (es. Roomba, via IFTTT) */
+  kind: 'tuya' | 'cycle' | 'shortcut'
   name: string
   deviceId: string
   /** codice del dato del dispositivo (es. «fault») */
@@ -127,6 +129,8 @@ export interface Automation {
   enabled: boolean
   /** `cycle`: codice segreto dell'indirizzo che il dispositivo (IFTTT…) chiama per segnalare inizio e fine */
   hookToken?: string
+  /** `shortcut`: ultimo comando che non è stato possibile applicare (es. azione non riconosciuta) */
+  lastError?: string
   /** ultima volta che il dispositivo ha segnalato (ms) */
   lastFiredAt?: number
   updatedAt: number

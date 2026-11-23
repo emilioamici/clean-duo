@@ -80,7 +80,7 @@ export function finalizeTimers(db: AppDatabase, now = Date.now()): AppDatabase {
 }
 
 /** «Completa ora»: finisce subito un'azione in corso, senza aspettare la fine della durata. */
-export function finishEarly(db: AppDatabase, taskId: string, now = Date.now()): AppDatabase {
+export function finishEarly(db: AppDatabase, taskId: string, now = Date.now(), end = now): AppDatabase {
   const x = db.tasks.find((y) => y.id === taskId)
-  return x?.runningUntil ? applyFinish(db, [{ task: x, end: now, early: true }], now) : db
+  return x?.runningUntil ? applyFinish(db, [{ task: x, end, early: true }], now) : db
 }

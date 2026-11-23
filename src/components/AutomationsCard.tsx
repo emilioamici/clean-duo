@@ -1,4 +1,4 @@
-import { ChevronDown, Cpu, Plus, RefreshCcw, Zap, Pencil } from 'lucide-react'
+import { ChevronDown, Cpu, Plus, RefreshCcw, Smartphone, Zap, Pencil } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { pushConfigured } from '../services/push'
 import { describeAutomation } from '../lib/automations'
@@ -37,6 +37,7 @@ export function AutomationsCard() {
 
   const kinds: Array<{ id: string; icon: ReactNode; name: string; text: string; onClick: () => void }> = [
     { id: 'tuya', icon: <Cpu size={18} />, name: t('Dispositivo Tuya'), text: t('Quando un dato del dispositivo cambia (es. crocchette in esaurimento) l’azione va tra le cose da fare.'), onClick: () => openAutomationSheet({}) },
+    { id: 'shortcut', icon: <Smartphone size={18} />, name: t('Comandi Shortcuts (iPhone)'), text: t('Un’automazione di Shortcuts avvia, completa, finisce o segna da fare un’azione chiamando un indirizzo.'), onClick: () => openAutomationSheet({ kind: 'shortcut' }) },
     { id: 'cycle', icon: <RefreshCcw size={18} />, name: t('Inizio e fine ciclo'), text: t('Per un robot (es. Roomba): all’inizio l’azione va «in corso», alla fine si completa da sola.'), onClick: () => openAutomationSheet({ kind: 'cycle' }) },
   ]
 
@@ -54,7 +55,8 @@ export function AutomationsCard() {
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand/15 text-brand"><Zap size={18} /></span>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-bold">{a.name}{!a.enabled && <span className="ml-2 text-xs font-normal text-muted">{t('disattivata')}</span>}</p>
-                <p className="truncate text-xs text-muted">{describeAutomation(a)} → {task?.name ?? '…'}</p>
+                <p className="truncate text-xs text-muted">{describeAutomation(a)}{a.kind === 'shortcut' ? '' : ` → ${task?.name ?? '…'}`}</p>
+                {a.lastError && <p className="truncate text-[11px] font-semibold text-exp">{a.lastError}</p>}
                 <p className="text-[11px] text-muted">{a.lastFiredAt ? t('Ultimo segnale: {when}', { when: timeAgo(a.lastFiredAt) }) : t('Nessun segnale ancora')}</p>
               </div>
               <button className="glass-btn !p-2" aria-label={t('Modifica {name}', { name: a.name })} onClick={() => openAutomationSheet({ id: a.id })}><Pencil size={15} /></button>

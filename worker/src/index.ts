@@ -1,4 +1,4 @@
-import { hookDelete, hookRegister, hookTrigger } from './hook'
+import { hookDelete, hookRegister, hookTrigger, shortcutAct } from './hook'
 import { bridgeAccess, bridgeEnabled, dbRead, dbWrite, houseMine, houseRegister } from './bridge'
 import { authCallback, authConfigured, authLogout, authRefresh, authStart } from './auth'
 import { OPS, TuyaError, deviceInfo, evalCondition, tuyaConfigured, type Condition, type Op } from './tuya'
@@ -285,7 +285,7 @@ interface TuyaRule extends Condition {
   active: boolean
 }
 /** `kind`: solo per gli inizi/fini di ciclo (hook); assente per i segnali dei dispositivi Tuya */
-export interface AutomationEventItem { id: string; ruleId: string; at: number; kind?: 'start' | 'finish' }
+export interface AutomationEventItem { id: string; ruleId: string; at: number; kind?: 'start' | 'finish' | 'act'; /** `act`: azione (id o nome), comando e membro */ task?: string; do?: 'todo' | 'complete' | 'start' | 'finish'; who?: string }
 
 const TU_INDEX = 'tu-index'
 const rulekey = (fileId: string, ruleId: string) => `tu:${fileId}:${ruleId}`
@@ -370,9 +370,10 @@ async function automationEvents(env: Env, req: Request): Promise<unknown> {
   const body = await readJson(req)
   if (!validFileId(body.fileId)) throw new HttpError(400, 'File non valido')
   await authenticate(env, req, body.fileId)
-  // gli inizi/fini di ciclo li vedono solo le app che li sanno applicare (`v` >= 2): una versione vecchia li scaricherebbe e li confermerebbe senza usarli
-  const sees = typeof body.v === 'number' && body.v >= 2
-  try { return { events: (JSON.parse((await env.SUBS.get(evKey(body.fileId))) ?? '[]') as AutomationEventItem[]).filter((e) => sees || !e.kind) } } catch { return { events: [] } }
+  // gli eventi di ciclo li vedono solo le app che li sanno applicare (`v` >= 2), i comandi da Shortcuts quelle con `v` >= 3:
+  // una versione vecchia li scaricherebbe e li confermerebbe senza usarli
+  const v = typeof body.v === 'number' ? body.v : 1
+  try { return { events: (JSON.parse((await env.SUBS.get(evKey(body.fileId))) ?? '[]') as AutomationEventItem[]).filter((e) => !e.kind || (e.kind === 'act' ? v >= 3 : v >= 2)) } } catch { return { events: [] } }
 }
 
 async function automationAck(env: Env, req: Request): Promise<unknown> {
@@ -441,6 +442,8 @@ export default {
     // segnali dei dispositivi (IFTTT, Home Assistant, curl…): niente `Origin`, l'accesso è il codice segreto nell'indirizzo
     const hook = /^\/hook\/([\w-]{20,64})\/(start|finish)$/.exec(pathname)
     if (hook && (req.method === 'GET' || req.method === 'POST')) { const r = await hookTrigger(env, hook[1], hook[2] as 'start' | 'finish'); return new Response(JSON.stringify(r.body), { status: r.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }) }
+    const act = /^\/do\/([\w-]{20,64})$/.exec(pathname)
+    if (act && (req.method === 'GET' || req.method === 'POST')) { const r = await shortcutAct(env, act[1], new URL(req.url).searchParams); return new Response(JSON.stringify(r.body), { status: r.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }) }
     if (req.method !== 'POST') return json(404, { error: 'Non trovato' })
     // le chiamate dal browser devono arrivare da un'origine autorizzata
     if (!headers['Access-Control-Allow-Origin']) return json(403, { error: 'Origine non autorizzata' })

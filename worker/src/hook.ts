@@ -15,6 +15,8 @@ const hkr = (fileId: string, ruleId: string) => `hkr:${fileId}:${ruleId}`
 const validRuleId = (s: unknown): s is string => typeof s === 'string' && /^[\w-]{3,80}$/.test(s)
 
 interface HookRecord {
+  /** `cycle` (inizio/fine di un dispositivo) o `shortcut` (comandi da Shortcuts): i due codici non valgono sull'altra rotta */
+  type?: 'cycle' | 'shortcut'
   fileId: string; ruleId: string; recipients: string[]; title: string; body: string
   state: 'idle' | 'running'
   /** quando è partito l'ultimo ciclo */
@@ -42,6 +44,7 @@ export async function hookRegister(env: Env, req: Request): Promise<unknown> {
     await env.SUBS.put(hkr(body.fileId, body.ruleId), token)
   }
   const rec: HookRecord = {
+    type: body.type === 'shortcut' ? 'shortcut' : 'cycle',
     fileId: body.fileId, ruleId: body.ruleId, recipients,
     title: typeof body.title === 'string' ? body.title.slice(0, 120) : 'Clean Duo',
     body: typeof body.body === 'string' ? body.body.slice(0, 300) : '',
@@ -67,7 +70,7 @@ export async function hookDelete(env: Env, req: Request): Promise<unknown> {
 export async function hookTrigger(env: Env, token: string, kind: 'start' | 'finish', now = Date.now()): Promise<{ status: number; body: Record<string, unknown> }> {
   if (!TOKEN.test(token)) return { status: 404, body: { error: 'Non trovato' } }
   const rec = await load(env, token)
-  if (!rec) return { status: 404, body: { error: 'Non trovato' } }
+  if (!rec || rec.type === 'shortcut') return { status: 404, body: { error: 'Non trovato' } }
 
   if (kind === 'start' && rec.state === 'running' && now - rec.since < RUN_MAX_MS) return { status: 200, body: { ok: true, ignored: 'già in corso' } }
   if (kind === 'finish' && rec.state === 'idle' && now - rec.lastFinish < DEDUPE_MS) return { status: 200, body: { ok: true, ignored: 'già finito' } }
@@ -88,4 +91,33 @@ export async function hookTrigger(env: Env, token: string, kind: 'start' | 'fini
     }
   }
   return { status: 200, body: { ok: true, event: kind } }
+}
+
+const ACTIONS = ['todo', 'complete', 'start', 'finish'] as const
+const sha = async (s: string) => b64u.enc(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)))).slice(0, 16)
+
+/**
+ * GET o POST /do/<codice>?task=<id o nome>&do=<todo|complete|start|finish>&who=<id del membro>: comando da Shortcuts (iPhone).
+ * Il Worker non conosce le azioni: mette il comando in coda e lo applica l'app alla prossima apertura (`do` assente = decide l'app
+ * dallo stato dell'azione: in corso → finisce, con durata → avvia, altrimenti completa). Un comando uguale entro un minuto è un doppione e si ignora.
+ */
+export async function shortcutAct(env: Env, token: string, params: URLSearchParams, now = Date.now()): Promise<{ status: number; body: Record<string, unknown> }> {
+  if (!TOKEN.test(token)) return { status: 404, body: { error: 'Non trovato' } }
+  const rec = await load(env, token)
+  if (!rec || rec.type !== 'shortcut') return { status: 404, body: { error: 'Non trovato' } }
+  const task = (params.get('task') ?? '').trim().slice(0, 100)
+  if (!task) return { status: 400, body: { error: 'Manca il parametro task (id o nome dell’azione)' } }
+  const act = params.get('do')
+  if (act && !(ACTIONS as readonly string[]).includes(act)) return { status: 400, body: { error: 'Il parametro do deve essere todo, complete, start o finish' } }
+  const who = (params.get('who') ?? '').trim().slice(0, 80)
+
+  const dk = `scd:${token}:${await sha(`${task}|${act ?? ''}|${who}`)}`
+  if (await env.SUBS.get(dk)) return { status: 200, body: { ok: true, ignored: 'doppione' } }
+  await env.SUBS.put(dk, '1', { expirationTtl: 60 })
+
+  const ev: AutomationEventItem = { id: `${rec.ruleId}-act-${now}-${await sha(`${task}|${act ?? ''}`)}`.slice(0, 120), ruleId: rec.ruleId, at: now, kind: 'act', task, ...(act ? { do: act as AutomationEventItem['do'] } : {}), ...(who ? { who } : {}) }
+  let queue: AutomationEventItem[] = []
+  try { queue = JSON.parse((await env.SUBS.get(evKey(rec.fileId))) ?? '[]') as AutomationEventItem[] } catch { queue = [] }
+  await env.SUBS.put(evKey(rec.fileId), JSON.stringify([...queue, ev].slice(-20)), { expirationTtl: 14 * 24 * 3600 })
+  return { status: 200, body: { ok: true, queued: true } }
 }

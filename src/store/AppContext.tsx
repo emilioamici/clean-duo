@@ -735,14 +735,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const full: Automation = { ...a, updatedAt: Date.now() }
     const tk = drive.currentToken()
     const fid = metaRef.current.fileId
-    if (a.kind === 'cycle') {
+    if (a.kind === 'cycle' || a.kind === 'shortcut') {
       // inizio/fine ciclo: l'azione collegata resta com'è (con la sua ricorrenza); il dispositivo la mette «in corso» e la completa
       mutate((d) => ({ ...d, automations: [...(d.automations ?? []).filter((x) => x.id !== a.id), full] }))
       try {
         if (!tk || !fid || !pushConfigured()) throw new Error(t('Per collegare un dispositivo serve una casa su Drive, il server delle notifiche e l\'accesso a Google attivo.'))
         if (a.enabled) {
           const task = dbRef.current.tasks.find((x) => x.id === a.taskId)
-          const token = await registerCycleHook(fid, tk, { ruleId: a.id, recipients: houseEmails(), title: t('«{task}» è finita', { task: task?.name ?? a.name }), body: a.name })
+          const token = await registerCycleHook(fid, tk, { ruleId: a.id, recipients: a.kind === 'cycle' ? houseEmails() : [], title: t('«{task}» è finita', { task: task?.name ?? a.name }), body: a.name, ...(a.kind === 'shortcut' ? { type: 'shortcut' as const } : {}) })
           if (token !== a.hookToken) mutate((d) => ({ ...d, automations: (d.automations ?? []).map((x) => (x.id === a.id ? { ...x, hookToken: token, updatedAt: Date.now() } : x)) }))
         } else await deleteCycleHook(fid, tk, a.id)
         return null
@@ -764,7 +764,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteAutomation: Ctx['deleteAutomation'] = async (id) => {
     const tk = drive.currentToken()
     const fid = metaRef.current.fileId
-    const cycle = (dbRef.current.automations ?? []).find((x) => x.id === id)?.kind === 'cycle'
+    const cycle = (dbRef.current.automations ?? []).find((x) => x.id === id)?.kind !== 'tuya'
     if (tk && fid && pushConfigured()) await (cycle ? deleteCycleHook(fid, tk, id) : deleteTuyaRule(fid, tk, id)).catch(() => undefined)
     mutate((d) => ({
       ...d,
@@ -783,7 +783,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const events = await pullAutomationEvents(fid, tk)
       if (events.length === 0) return
+      const before = dbRef.current.tasks.filter((x) => x.runningUntil)
       mutate((d) => applyAutomationEvents(d, events))
+      // un comando può aver finito un timer: la notifica di fine programmata sul server non deve più arrivare
+      for (const x of before) if (!dbRef.current.tasks.find((y) => y.id === x.id)?.runningUntil) cancelServerTimer(x.id, x.runningUntil!)
       await ackAutomationEvents(fid, tk, events.map((e) => e.id))
     } catch { /* si riprova al prossimo ciclo */ } finally { pulling.current = false; lastPull.current = Date.now() }
   }

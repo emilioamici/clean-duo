@@ -4,7 +4,7 @@ import { describeCondition, OP_LABEL } from '../lib/automations'
 import { uid } from '../lib/clean'
 import { timeAgo } from '../lib/stats'
 import { t } from '../i18n'
-import { cycleHookUrl, pushConfigured, tuyaStatus, type TuyaCondition, type TuyaDeviceInfo } from '../services/push'
+import { cycleHookUrl, pushConfigured, shortcutUrl, tuyaStatus, type TuyaCondition, type TuyaDeviceInfo } from '../services/push'
 import * as drive from '../services/googleDriveService'
 import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
@@ -274,6 +274,93 @@ function CycleForm({ id, onClose }: { id?: string; onClose: () => void }) {
   )
 }
 
+/** Comandi da Shortcuts di iPhone: un indirizzo per casa; nel link si indica quale azione e che cosa farne. */
+function ShortcutForm({ id, onClose }: { id?: string; onClose: () => void }) {
+  const app = useApp()
+  const { openAutomationSheet } = useUi()
+  const { db, me } = app
+  const existing = (db.automations ?? []).find((a) => a.id === id)
+  const [name, setName] = useState(existing?.name ?? 'Shortcuts')
+  const [enabled, setEnabled] = useState(existing?.enabled ?? true)
+  const [taskId, setTaskId] = useState(db.tasks.find((x) => !x.archived)?.id ?? '')
+  const [action, setAction] = useState('')
+  const [who, setWho] = useState(me?.id ?? db.members[0]?.id ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [copied, setCopied] = useState(false)
+  const server = pushConfigured() && app.mode === 'drive'
+  const task = db.tasks.find((x) => x.id === taskId)
+  const url = existing?.hookToken && taskId ? shortcutUrl(existing.hookToken, taskId, action, who) : ''
+  const ACTIONS: Array<{ id: string; label: string }> = [
+    { id: '', label: t('Automatica: finisce se è in corso, avvia se ha una durata, altrimenti completa') },
+    { id: 'todo', label: t('Segna da fare (azioni «Su richiesta»)') },
+    { id: 'complete', label: t('Completa') },
+    { id: 'start', label: t('Avvia') },
+    { id: 'finish', label: t('Finisci (se in corso)') },
+  ]
+
+  const save = async () => {
+    setErr(''); setBusy(true)
+    try {
+      const aid = existing?.id ?? uid('a')
+      const e = await app.saveAutomation({ id: aid, kind: 'shortcut', name: name.trim(), deviceId: '', code: '', op: 'eq', value: '', taskId: '', enabled, hookToken: existing?.hookToken })
+      if (e) { setErr(e); return }
+      if (!existing) openAutomationSheet({ id: aid })
+      else onClose()
+    } finally { setBusy(false) }
+  }
+
+  return (
+    <div>
+      {!server && <p className="mb-2 rounded-xl bg-brand/15 p-3 text-sm text-brand">{t('Per collegare un dispositivo serve una casa su Drive e il server delle notifiche (vedi README).')}</p>}
+      <p className="rounded-xl bg-brand/10 p-3 text-sm text-muted">{t('Una automazione di Shortcuts chiama un indirizzo con l’azione e il comando: l’app lo applica alla prossima apertura (da qualunque dispositivo della casa).')}</p>
+      <label className="label">{t('Nome')}</label>
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} />
+      <div className="mt-3"><Toggle checked={enabled} onChange={setEnabled} label={t('Automazione attiva')} /></div>
+      {err && <p className="mt-3 rounded-xl bg-exp/10 p-3 text-sm text-exp">{err}</p>}
+      <button type="button" className="glass-btn btn-primary mt-4 w-full !py-3.5" disabled={busy || !name.trim() || !server} onClick={() => void save()}>
+        {busy ? <Loader2 size={18} className="animate-spin" /> : null}{existing ? t('Salva modifiche') : t('Attiva i comandi')}
+      </button>
+
+      {existing?.hookToken && (
+        <div className="mt-4 rounded-2xl border border-line bg-bg/60 p-3">
+          <p className="text-sm font-bold">{t('Crea il link per Shortcuts')}</p>
+          <label className="label !mt-2">{t('Azione')}</label>
+          <select className="field" value={taskId} onChange={(e) => setTaskId(e.target.value)} aria-label={t('Azione')}>
+            {db.tasks.filter((x) => !x.archived).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+          <label className="label">{t('Cosa fare')}</label>
+          <select className="field" value={action} onChange={(e) => setAction(e.target.value)} aria-label={t('Cosa fare')}>
+            {ACTIONS.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+          </select>
+          <label className="label">{t('Per conto di (a lui vanno le stelle)')}</label>
+          <select className="field" value={who} onChange={(e) => setWho(e.target.value)} aria-label={t('Per conto di (a lui vanno le stelle)')}>
+            {db.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+          </select>
+          <p className="mb-1 mt-3 text-xs font-semibold text-muted">{t('Indirizzo da incollare in Shortcuts')}</p>
+          <div className="flex gap-2">
+            <input readOnly className="field font-mono !text-[11px]" value={url} onFocus={(e) => e.currentTarget.select()} aria-label={t('Indirizzo da incollare in Shortcuts')} />
+            <button type="button" className="glass-btn !px-3" aria-label={t('Copia')} onClick={() => { void navigator.clipboard?.writeText(url); setCopied(true); window.setTimeout(() => setCopied(false), 1500) }}>{copied ? <Check size={16} /> : <Copy size={16} />}</button>
+          </div>
+          <ol className="mt-3 list-decimal space-y-1 pl-5 text-xs text-muted">
+            <li>{t('Shortcuts → Automazione → «+» → scegli quando (un orario, un luogo, un tag NFC, la ricarica…).')}</li>
+            <li>{t('Aggiungi l’azione «Ottieni contenuti dell’URL» e incolla l’indirizzo (metodo GET).')}</li>
+            <li>{t('Disattiva «Chiedi prima di eseguire» così parte da sola.')}</li>
+          </ol>
+          <p className="mt-2 text-xs text-muted">{t('Al posto dell’id puoi scrivere il nome esatto dell’azione (se è uno solo). Per «secchiello pieno → da fare» scegli «Segna da fare».')}</p>
+          {task && <p className="mt-1 text-xs text-muted">{t('Azione scelta: «{name}»', { name: task.name })}</p>}
+          <p className="mt-2 text-xs text-muted">{t('Gli indirizzi sono segreti: chi li conosce può dare comandi alla casa. Non condividerli.')}</p>
+          {existing.lastError && <p className="mt-2 rounded-xl bg-exp/10 p-2 text-xs font-semibold text-exp">{t('Ultimo comando non applicato: {error}', { error: existing.lastError })}</p>}
+          <p className="mt-1 text-xs text-muted">{existing.lastFiredAt ? t('Ultimo comando: {when}', { when: timeAgo(existing.lastFiredAt) }) : t('Nessun comando ancora')}</p>
+        </div>
+      )}
+      {existing && (
+        <button type="button" className="glass-btn btn-danger mt-3 w-full" onClick={() => { void app.deleteAutomation(existing.id); onClose() }}><Trash2 size={16} /> {t('Elimina automazione')}</button>
+      )}
+    </div>
+  )
+}
+
 export function AutomationSheet() {
   const { automationSheet, openAutomationSheet } = useUi()
   const { db } = useApp()
@@ -281,9 +368,11 @@ export function AutomationSheet() {
   const kind = (db.automations ?? []).find((a) => a.id === automationSheet?.id)?.kind ?? automationSheet?.kind ?? 'tuya'
   return (
     <Sheet open={!!automationSheet} onClose={close} title={automationSheet?.id ? t('Modifica automazione') : t('Collega un dispositivo')}>
-      {automationSheet && (kind === 'cycle'
-        ? <CycleForm key={automationSheet.id ?? 'new-cycle'} id={automationSheet.id} onClose={close} />
-        : <AutomationForm key={automationSheet.id ?? 'new'} id={automationSheet.id} onClose={close} />)}
+      {automationSheet && (kind === 'shortcut'
+        ? <ShortcutForm key={automationSheet.id ?? 'new-shortcut'} id={automationSheet.id} onClose={close} />
+        : kind === 'cycle'
+          ? <CycleForm key={automationSheet.id ?? 'new-cycle'} id={automationSheet.id} onClose={close} />
+          : <AutomationForm key={automationSheet.id ?? 'new'} id={automationSheet.id} onClose={close} />)}
     </Sheet>
   )
 }
