@@ -34,9 +34,9 @@ export default function App() {
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={tab}
-                  initial={{ opacity: 0, y: 10, filter: 'blur(6px)' }}
-                  animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                  exit={{ opacity: 0, y: -6, filter: 'blur(6px)' }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.18 }}
                   className="pt-4"
                 >
