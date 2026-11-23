@@ -1,5 +1,11 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "Crea: {name}": "Create: {name}",
+  "Per un robot (es. Roomba): all’inizio l’azione va «in corso», alla fine si completa da sola.": "For a robot (e.g. Roomba): the task goes “running” at the start and completes by itself at the end.",
+  "Quando un dato del dispositivo cambia (es. crocchette in esaurimento) l’azione va tra le cose da fare.": "When a device value changes (e.g. food running low) the task goes to the to-do list.",
+  "Nessuna automazione ancora: creane una da «Nuova automazione».": "No automations yet: create one from “New automation”.",
+  "Nuova automazione": "New automation",
+  "Automazioni attive": "Active automations",
   "«{task}» è finita": "“{task}” is done",
   "Il server non ha restituito il codice dell’indirizzo. Ridistribuisci il Worker dall’ultima versione.": "The server did not return the address code. Redeploy the Worker from the latest version.",
   "Inizio e fine del ciclo": "Start and end of the cycle",
