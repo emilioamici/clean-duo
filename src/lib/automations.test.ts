@@ -172,9 +172,10 @@ describe('comandi da Shortcuts', () => {
   })
 
   it('nome sbagliato o ambiguo: nessun effetto e l\'errore si vede; membro sconosciuto: nessuna stella', () => {
-    const wrong = cmd(setup(), { task: 'Inesistente' })
+    const base = setup() // createDemoDb usa l'ora corrente: si confronta con la stessa istanza
+    const wrong = cmd(base, { task: 'Inesistente' })
     expect(wrong.automations![0].lastError).toContain('non riconosciuta')
-    expect(wrong.tasks).toEqual(setup().tasks)
+    expect(wrong.tasks).toEqual(base.tasks)
     expect(cmd(setup(), { task: 'Piatti' }).automations![0].lastError).toContain('Più azioni')
     const noStars = cmd(setup(), { task: 'pia', who: 'sconosciuto' })
     expect(noStars.logs[0]).toMatchObject({ memberId: '', stars: 0, auto: true })
