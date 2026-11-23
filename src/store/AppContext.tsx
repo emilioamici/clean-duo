@@ -131,6 +131,8 @@ interface Ctx {
   assignRunning: (taskId: string) => void
   /** «Su richiesta»: la segna «da fare», così compare tra le cose da fare. */
   markTodo: (taskId: string) => void
+  /** «Su richiesta»: la toglie dalle cose da fare. */
+  unmarkTodo: (taskId: string) => void
   /** Avvia l'azione con durata: resta «in corso» e si completa da sola alla fine. Ritorna l'ora di fine (ms). */
   startTimer: (taskId: string, memberId: string, roomIds?: string[]) => number | null
   /** Annulla un'azione in corso senza completarla. */
@@ -601,6 +603,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ...d, tasks: d.tasks.map((x) => (x.id === taskId && isOnDemand(x) ? { ...x, todoAt: now, updatedAt: now } : x)) }
   })
 
+  const unmarkTodo: Ctx['unmarkTodo'] = (taskId) => mutate((d) => {
+    const now = Date.now()
+    return { ...d, tasks: d.tasks.map((x) => (x.id === taskId && isOnDemand(x) ? { ...x, todoAt: null, updatedAt: now } : x)) }
+  })
+
   const deleteLog: Ctx['deleteLog'] = (logId) => mutate((d) => undoCompletion(d, logId))
 
   const upsertMember: Ctx['upsertMember'] = (m) => {
@@ -871,7 +878,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, config, setConfig, theme, setTheme, meId, me, setMeId, toast, notify,
     persistent, prefs, setPrefs, notifications, unread, markRead, markAllRead, clearNotifications, toastNotif, dismissToastNotif, centerOpen, setCenterOpen,
     enableNotifications, disableNotifications, sendTestPush,
-    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, markTodo, assignRunning, deleteLog, saveAutomation, deleteAutomation, pullEvents, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
+    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, markTodo, unmarkTodo, assignRunning, deleteLog, saveAutomation, deleteAutomation, pullEvents, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
     demoSkipped, setDemoSkipped, offlineSkipped, setOfflineSkipped,
     syncNow, connect, reconnect, createHouse, joinHouse, shareWith, disconnect, resetDemo,
   }
