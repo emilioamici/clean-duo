@@ -1,4 +1,4 @@
-import { BarChart3, Crown, Gift, History, Star, Target, Undo2 } from 'lucide-react'
+import { BarChart3, Crown, Gift, History, Star, Target, Undo2, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { DAY } from '../lib/clean'
 import { monthStart, starsSince, timeAgo, weekStart, weeklySeries } from '../lib/stats'
@@ -118,7 +118,7 @@ export function RankingView() {
           </div>
         </Accordion>
 
-        <Accordion title={t('Attività recenti')} icon={<History size={20} />} open={!!open.history} onToggle={() => flip('history')} summary={db.logs[0] ? `${db.members.find((x) => x.id === db.logs[0].memberId)?.name ?? ''} · ${db.logs[0].taskName}` : t('Nessuna attività ancora')}>
+        <Accordion title={t('Attività recenti')} icon={<History size={20} />} open={!!open.history} onToggle={() => flip('history')} summary={db.logs[0] ? `${db.logs[0].auto ? t('Automatico') : db.members.find((x) => x.id === db.logs[0].memberId)?.name ?? ''} · ${db.logs[0].taskName}` : t('Nessuna attività ancora')}>
           <div className="-mx-4 -my-4 divide-y divide-line/70">
             {db.logs.slice(0, 25).map((l) => {
               const m = db.members.find((x) => x.id === l.memberId)
@@ -126,12 +126,12 @@ export function RankingView() {
               const r = logRooms[0]
               return (
                 <div key={l.id} className="flex items-center gap-3 px-4 py-3">
-                  <Avatar member={m} size={34} />
+                  {l.auto ? <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand"><Zap size={16} /></span> : <Avatar member={m} size={34} />}
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm">{t('{who} ha completato {task}', { who: m?.name ?? t('Ex membro'), task: l.taskName })}</p>
+                    <p className="truncate text-sm">{l.auto ? t('{task} completata in automatico', { task: l.taskName }) : t('{who} ha completato {task}', { who: m?.name ?? t('Ex membro'), task: l.taskName })}</p>
                     <p className="flex items-center gap-1 text-xs text-muted">{r && <RoomIcon name={r.icon} size={11} />}{logRooms.length ? logRooms.map((x) => x.name).join(', ') : t('Stanza rimossa')} · {timeAgo(l.at)}</p>
                   </div>
-                  <span className="flex shrink-0 items-center gap-0.5 text-sm font-bold">+{l.stars}<Star size={13} className="fill-brand text-brand" /></span>
+                  {!l.auto && <span className="flex shrink-0 items-center gap-0.5 text-sm font-bold">+{l.stars}<Star size={13} className="fill-brand text-brand" /></span>}
                   <button className="glass-btn !p-2 text-muted" aria-label={t('Annulla il completamento di {task}', { task: l.taskName })}
                     onClick={() => { if (window.confirm(t('Annullare il completamento di «{task}»? Le stelle si tolgono e l’azione torna da fare.', { task: l.taskName }))) deleteLog(l.id) }}>
                     <Undo2 size={15} />

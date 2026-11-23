@@ -1,9 +1,10 @@
-import { CheckCircle2, CircleAlert, Loader2, Plug, Trash2 } from 'lucide-react'
+import { Check, CheckCircle2, CircleAlert, Copy, Loader2, Plug, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import { describeCondition, OP_LABEL } from '../lib/automations'
 import { uid } from '../lib/clean'
+import { timeAgo } from '../lib/stats'
 import { t } from '../i18n'
-import { pushConfigured, tuyaStatus, type TuyaCondition, type TuyaDeviceInfo } from '../services/push'
+import { cycleHookUrl, pushConfigured, tuyaStatus, type TuyaCondition, type TuyaDeviceInfo } from '../services/push'
 import * as drive from '../services/googleDriveService'
 import { useApp } from '../store/AppContext'
 import { useUi } from '../store/UiContext'
@@ -163,12 +164,126 @@ function AutomationForm({ id, onClose }: { id?: string; onClose: () => void }) {
   )
 }
 
+/** Inizio e fine del ciclo di un dispositivo (es. Roomba): l'azione va «in corso» alla partenza e si completa alla fine. */
+function CycleForm({ id, onClose }: { id?: string; onClose: () => void }) {
+  const app = useApp()
+  const { openAutomationSheet } = useUi()
+  const { db } = app
+  const existing = (db.automations ?? []).find((a) => a.id === id)
+  const [name, setName] = useState(existing?.name ?? 'Roomba')
+  const [enabled, setEnabled] = useState(existing?.enabled ?? true)
+  const [useExisting, setUseExisting] = useState(!!existing)
+  const [taskId, setTaskId] = useState(existing?.taskId ?? db.tasks.find((x) => !x.onEvent && !x.afterTaskId && !x.archived)?.id ?? '')
+  const [newName, setNewName] = useState(t('Passare l’aspirapolvere'))
+  const [roomId, setRoomId] = useState(db.rooms[0]?.id ?? '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [copied, setCopied] = useState('')
+  const server = pushConfigured() && app.mode === 'drive'
+  const valid = name.trim() && (useExisting ? !!taskId : !!newName.trim() && !!roomId)
+  const startUrl = existing?.hookToken ? cycleHookUrl(existing.hookToken, 'start') : ''
+  const finishUrl = existing?.hookToken ? cycleHookUrl(existing.hookToken, 'finish') : ''
+
+  const copy = (key: string, text: string) => { void navigator.clipboard?.writeText(text); setCopied(key); window.setTimeout(() => setCopied(''), 1500) }
+  const save = async () => {
+    setErr(''); setBusy(true)
+    try {
+      let target = taskId
+      if (!useExisting) {
+        target = uid('t')
+        app.upsertTask({ id: target, roomId, name: newName.trim(), stars: 2, assignment: { mode: 'anyone' }, recurrence: { type: 'weekly', every: 1 } })
+      }
+      const aid = existing?.id ?? uid('a')
+      const e = await app.saveAutomation({ id: aid, kind: 'cycle', name: name.trim(), deviceId: '', code: '', op: 'eq', value: '', taskId: target, enabled, hookToken: existing?.hookToken })
+      if (e) { setErr(e); return }
+      if (!existing) openAutomationSheet({ id: aid }) // si riapre in modifica: ora ci sono gli indirizzi da copiare
+      else onClose()
+    } finally { setBusy(false) }
+  }
+
+  const Row = ({ k, label, value }: { k: string; label: string; value: string }) => (
+    <div className="mt-2">
+      <p className="px-1 text-xs font-semibold text-muted">{label}</p>
+      <div className="mt-1 flex gap-2">
+        <input readOnly className="field font-mono !text-[11px]" value={value} onFocus={(e) => e.currentTarget.select()} aria-label={label} />
+        <button type="button" className="glass-btn !px-3" aria-label={t('Copia')} onClick={() => copy(k, value)}>{copied === k ? <Check size={16} /> : <Copy size={16} />}</button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div>
+      {!server && <p className="mb-2 rounded-xl bg-brand/15 p-3 text-sm text-brand">{t('Per collegare un dispositivo serve una casa su Drive e il server delle notifiche (vedi README).')}</p>}
+      <p className="rounded-xl bg-brand/10 p-3 text-sm text-muted">{t('Quando il dispositivo segnala l’inizio del ciclo l’azione va «in corso»; quando segnala la fine si completa da sola (senza stelle) e tutti vengono avvisati.')}</p>
+
+      <label className="label">{t('Nome')}</label>
+      <input className="field" value={name} onChange={(e) => setName(e.target.value)} />
+
+      <label className="label">{t('Azione collegata')}</label>
+      <div className="rounded-2xl border border-line bg-bg/60 p-3">
+        <div className="flex gap-2">
+          <button type="button" className={`chip ${!useExisting ? 'chip-active' : ''}`} onClick={() => setUseExisting(false)}>{t('Nuova azione')}</button>
+          <button type="button" className={`chip ${useExisting ? 'chip-active' : ''}`} onClick={() => setUseExisting(true)}>{t('Azione esistente')}</button>
+        </div>
+        {useExisting ? (
+          <select className="field mt-2" value={taskId} onChange={(e) => setTaskId(e.target.value)} aria-label={t('Azione')}>
+            {db.tasks.filter((x) => !x.archived && !x.afterTaskId && !x.onEvent).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          </select>
+        ) : (
+          <>
+            <input className="field mt-2" value={newName} onChange={(e) => setNewName(e.target.value)} />
+            <div className="mt-2 flex flex-wrap gap-2">
+              {db.rooms.map((r) => (
+                <button key={r.id} type="button" className={`chip ${roomId === r.id ? 'chip-active' : ''}`} onClick={() => setRoomId(r.id)}><RoomIcon name={r.icon} size={14} />{r.name}</button>
+              ))}
+            </div>
+          </>
+        )}
+        <p className="mt-2 text-xs text-muted">{t('L’azione tiene la sua ricorrenza; il ciclo del dispositivo la completa (puoi sempre completarla o annullarla a mano).')}</p>
+      </div>
+
+      <div className="mt-3"><Toggle checked={enabled} onChange={setEnabled} label={t('Automazione attiva')} /></div>
+      {err && <p className="mt-3 rounded-xl bg-exp/10 p-3 text-sm text-exp">{err}</p>}
+
+      <button type="button" className="glass-btn btn-primary mt-4 w-full !py-3.5" disabled={busy || !valid || !server} onClick={() => void save()}>
+        {busy ? <Loader2 size={18} className="animate-spin" /> : null}{existing ? t('Salva modifiche') : t('Collega dispositivo')}
+      </button>
+
+      {existing?.hookToken && (
+        <div className="mt-4 rounded-2xl border border-line bg-bg/60 p-3">
+          <p className="text-sm font-bold">{t('Indirizzi da far chiamare al dispositivo')}</p>
+          <Row k="start" label={t('Quando parte')} value={startUrl} />
+          <Row k="finish" label={t('Quando finisce')} value={finishUrl} />
+          <p className="mb-1 mt-3 text-xs font-semibold text-muted">{t('Con IFTTT (applet, azione «Webhooks → Make a web request», metodo GET):')}</p>
+          <ol className="list-decimal space-y-1 pl-5 text-xs text-muted">
+            <li>{t('Se: iRobot → il robot avvia la pulizia. Allora: Webhooks → Make a web request con l’indirizzo «Quando parte».')}</li>
+            <li>{t('Se: iRobot → il robot finisce una pulizia. Allora: Make a web request con l’indirizzo «Quando finisce».')}</li>
+            <li>{t('IFTTT può metterci qualche minuto a segnalare.')}</li>
+          </ol>
+          <p className="mb-1 mt-3 text-xs font-semibold text-muted">{t('Per provare senza IFTTT (da un computer):')}</p>
+          <div className="flex gap-2"><input readOnly className="field font-mono !text-[11px]" value={`curl "${startUrl}"`} onFocus={(e) => e.currentTarget.select()} aria-label="curl start" /><button type="button" className="glass-btn !px-3" aria-label={t('Copia')} onClick={() => copy('c1', `curl "${startUrl}"`)}>{copied === 'c1' ? <Check size={16} /> : <Copy size={16} />}</button></div>
+          <div className="mt-2 flex gap-2"><input readOnly className="field font-mono !text-[11px]" value={`curl "${finishUrl}"`} onFocus={(e) => e.currentTarget.select()} aria-label="curl finish" /><button type="button" className="glass-btn !px-3" aria-label={t('Copia')} onClick={() => copy('c2', `curl "${finishUrl}"`)}>{copied === 'c2' ? <Check size={16} /> : <Copy size={16} />}</button></div>
+          <p className="mt-2 text-xs text-muted">{t('Gli indirizzi sono segreti: chi li conosce può segnalare inizio e fine. Non condividerli.')}</p>
+          {existing.lastFiredAt ? <p className="mt-1 text-xs text-muted">{t('Ultimo segnale: {when}', { when: timeAgo(existing.lastFiredAt) })}</p> : <p className="mt-1 text-xs text-muted">{t('Nessun segnale ancora')}</p>}
+        </div>
+      )}
+      {existing && (
+        <button type="button" className="glass-btn btn-danger mt-3 w-full" onClick={() => { void app.deleteAutomation(existing.id); onClose() }}><Trash2 size={16} /> {t('Elimina automazione')}</button>
+      )}
+    </div>
+  )
+}
+
 export function AutomationSheet() {
   const { automationSheet, openAutomationSheet } = useUi()
+  const { db } = useApp()
   const close = () => openAutomationSheet(null)
+  const kind = (db.automations ?? []).find((a) => a.id === automationSheet?.id)?.kind ?? automationSheet?.kind ?? 'tuya'
   return (
     <Sheet open={!!automationSheet} onClose={close} title={automationSheet?.id ? t('Modifica automazione') : t('Collega un dispositivo')}>
-      {automationSheet && <AutomationForm key={automationSheet.id ?? 'new'} id={automationSheet.id} onClose={close} />}
+      {automationSheet && (kind === 'cycle'
+        ? <CycleForm key={automationSheet.id ?? 'new-cycle'} id={automationSheet.id} onClose={close} />
+        : <AutomationForm key={automationSheet.id ?? 'new'} id={automationSheet.id} onClose={close} />)}
     </Sheet>
   )
 }

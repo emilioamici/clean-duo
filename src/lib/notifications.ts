@@ -55,7 +55,7 @@ export function changeEvents(prev: AppDatabase, next: AppDatabase): ChangeEvent[
       out.push({
         kind: 'done', key: `done:${l.id}`, actor: l.memberId, taskId: l.taskId, timer: l.timer, early: l.early,
         title: l.timer ? t('Il task «{task}» è finito', { task: l.taskName }) : t('{who} ha completato «{task}»', { who: who(l.memberId), task: l.taskName }),
-        body: [(l.roomIds ?? [l.roomId]).map(room).filter(Boolean).join(', '), `+${l.stars} ⭐`].filter(Boolean).join(' · '),
+        body: [(l.roomIds ?? [l.roomId]).map(room).filter(Boolean).join(', '), l.stars > 0 ? `+${l.stars} ⭐` : ''].filter(Boolean).join(' · '),
       })
     }
   }

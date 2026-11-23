@@ -136,10 +136,27 @@ export async function deleteTuyaRule(fileId: string, token: string, ruleId: stri
   await post('/tuya/rule/delete', token, { fileId, ruleId })
 }
 
-export interface ServerEvent { id: string; ruleId: string; at: number }
+export interface ServerEvent { id: string; ruleId: string; at: number; kind?: 'start' | 'finish' }
+/** `v: 2` = questa app sa applicare anche inizio/fine di un ciclo (le versioni vecchie non li ricevono, così non li confermano senza usarli). */
 export async function pullAutomationEvents(fileId: string, token: string): Promise<ServerEvent[]> {
-  return ((await post('/automation/events', token, { fileId })) as { events?: ServerEvent[] }).events ?? []
+  return ((await post('/automation/events', token, { fileId, v: 2 })) as { events?: ServerEvent[] }).events ?? []
 }
 export async function ackAutomationEvents(fileId: string, token: string, ids: string[]): Promise<void> {
   await post('/automation/ack', token, { fileId, ids })
 }
+
+/* ------------------------------------------------------------------ inizio e fine di un ciclo (es. Roomba via IFTTT) */
+
+export interface CycleHookPayload { ruleId: string; recipients: string[]; title: string; body: string; regenerate?: boolean }
+
+/** Crea (o aggiorna) il collegamento sul server e restituisce il codice segreto dell'indirizzo da chiamare. */
+export async function registerCycleHook(fileId: string, token: string, p: CycleHookPayload): Promise<string> {
+  const j = (await post('/hook/register', token, { fileId, ...p })) as { token?: string }
+  if (!j.token) throw new Error(t('Il server non ha restituito il codice dell’indirizzo. Ridistribuisci il Worker dall’ultima versione.'))
+  return j.token
+}
+export async function deleteCycleHook(fileId: string, token: string, ruleId: string): Promise<void> {
+  await post('/hook/delete', token, { fileId, ruleId })
+}
+/** Indirizzo che il dispositivo (IFTTT, curl…) chiama per segnalare l'inizio o la fine del ciclo. */
+export const cycleHookUrl = (hookToken: string, kind: 'start' | 'finish'): string => `${pushUrl()}/hook/${hookToken}/${kind}`
