@@ -57,7 +57,10 @@ export function nextDue(task: Task, roomId?: string): number | null {
   const ref = last ?? task.createdAt
 
   // «su richiesta»: da fare finché non è fatta la prima volta e ogni volta che viene segnata «da fare» dopo l'ultimo completamento
-  if (type === 'once') return !last ? startOfDay(task.createdAt) : task.todoAt && task.todoAt > last ? startOfDay(task.todoAt) : null
+  if (type === 'once') {
+    if (task.todoAt === null) return null
+    return !last ? startOfDay(task.todoAt ?? task.createdAt) : task.todoAt && task.todoAt > last ? startOfDay(task.todoAt) : null
+  }
 
   if (type === 'daily') {
     return last ? startOfDay(ref) + n * DAY : startOfDay(ref)
@@ -145,7 +148,7 @@ export function cleanColor(pct: number): string {
 
 export function dueLabel(task: Task, now = Date.now(), roomId?: string): string {
   const due = nextDue(task, roomId)
-  if (due === null) return t('Completata')
+  if (due === null) return lastFor(task, roomId ?? taskRooms(task)[0]) ? t('Completata') : t('Su richiesta')
   const diff = Math.round((startOfDay(due) - startOfDay(now)) / DAY)
   if (diff < -1) return t('Scaduta da {n} giorni', { n: -diff })
   if (diff === -1) return t('Scaduta ieri')

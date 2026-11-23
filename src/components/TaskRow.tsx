@@ -28,7 +28,7 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
   const { db } = useApp()
   const [noteOpen, setNoteOpen] = useState(false)
   const { complete, finish, openTaskSheet } = useUi()
-  const { cancelTimer, markTodo, assignRunning } = useApp()
+  const { cancelTimer, markTodo, unmarkTodo, assignRunning } = useApp()
   const now = useNow(15_000)
   const running = isRunning(task)
   const before = task.afterTaskId ? db.tasks.find((x) => x.id === task.afterTaskId) : undefined
@@ -125,7 +125,7 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
           )}
         </span>
       ) : (
-        <>
+        <span className="flex shrink-0 items-center gap-2">
         {isOnDemand(task) && nextDue(task, roomId) === null && (
           <motion.button
             whileTap={{ scale: 0.82 }}
@@ -135,6 +135,17 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
             title={t('Segna da fare')}
           >
             <ClipboardList size={18} />
+          </motion.button>
+        )}
+        {isOnDemand(task) && nextDue(task, roomId) !== null && (
+          <motion.button
+            whileTap={{ scale: 0.85 }}
+            onClick={() => { unmarkTodo(task.id); try { navigator.vibrate?.(15) } catch { /* non supportato (iOS) */ } }}
+            className="glass-btn !h-10 !w-10 shrink-0 !p-0 text-muted"
+            aria-label={t('Togli «{name}» dai to-do', { name: task.name })}
+            title={t('Togli dai to-do')}
+          >
+            <X size={18} strokeWidth={2.6} />
           </motion.button>
         )}
         <motion.button
@@ -148,7 +159,7 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
         >
           {task.durationMin ? <Play size={22} strokeWidth={2.6} className="fill-current" /> : <Check size={24} strokeWidth={3} />}
         </motion.button>
-        </>
+        </span>
       )}
       </motion.div>
       {unassigned && (

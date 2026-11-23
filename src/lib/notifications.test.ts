@@ -456,4 +456,22 @@ describe('«su richiesta»: segna da fare', () => {
     expect(changeEvents(prev, next).filter((e) => e.kind === 'todo')).toHaveLength(1)
     expect(changeEvents(next, next).filter((e) => e.kind === 'todo')).toHaveLength(0)
   })
+  it('può essere tolta dai to-do prima o dopo il completamento', async () => {
+    const { nextDue } = await import('./clean')
+    const { applyCompletion } = await import('./rooms')
+    const db = createDemoDb()
+    const t0 = { ...db.tasks[0], recurrence: { type: 'once' as const, every: 1 }, lastCompletedAt: null, completions: 0 }
+    expect(nextDue(t0)).not.toBeNull()
+    const untodoNew = { ...t0, todoAt: null }
+    expect(nextDue(untodoNew)).toBeNull()
+    const now = Date.now()
+    const reTodo = { ...untodoNew, todoAt: now }
+    expect(nextDue(reTodo)).not.toBeNull()
+    const done = applyCompletion(reTodo, [], now + 60_000)
+    expect(nextDue(done)).toBeNull()
+    const marked = { ...done, todoAt: done.lastCompletedAt! + 60_000 }
+    expect(nextDue(marked)).not.toBeNull()
+    const untodo = { ...marked, todoAt: null }
+    expect(nextDue(untodo)).toBeNull()
+  })
 })

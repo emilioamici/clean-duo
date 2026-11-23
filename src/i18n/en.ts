@@ -66,6 +66,8 @@ export const EN: Record<string, string> = {
   "Prova inviata dal server: dovrebbe arrivare tra pochi secondi.": "Test sent by the server: it should arrive in a few seconds.",
   "Segna da fare": "Mark as to do",
   "Segna «{name}» da fare": "Mark “{name}” as to do",
+  "Togli dai to-do": "Remove from to-do",
+  "Togli «{name}» dai to-do": "Remove “{name}” from to-do",
   "Errore del server ({status})": "Server error ({status})",
   "Per far entrare gli invitati senza il selettore di Google attiva l’accesso persistente (Sincronizzazione e account).": "To let invited people in without Google’s file picker, turn on persistent sign-in (Sync and account).",
   "Sei entrato dall’invito: gli inviti ai nuovi membri li fa chi ha creato la casa.": "You joined from an invitation: invitations to new members are sent by whoever created the house.",
