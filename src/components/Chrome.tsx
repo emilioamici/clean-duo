@@ -23,7 +23,7 @@ export function Background() {
   )
 }
 
-/** Pulsante flottante «+». Si disegna nello strato fisso della schermata (le pagine hanno animazioni che altrimenti lo farebbero scorrere). */
+/** Pulsante flottante «+». Si disegna nello strato fisso della schermata (le pagine hanno animazioni che altrimenti lo farebbero scorrere). Nascosto su tablet/desktop dove è presente nella barra laterale. */
 export function Fab({ label, onClick }: { label: string; onClick: () => void }) {
   const [host, setHost] = useState<HTMLElement | null>(null)
   useEffect(() => setHost(document.getElementById('shell-overlay')), [])
@@ -31,7 +31,7 @@ export function Fab({ label, onClick }: { label: string; onClick: () => void }) 
   return createPortal(
     <motion.button
       whileTap={{ scale: 0.9 }} onClick={onClick} aria-label={label}
-      className="glass-btn btn-primary pointer-events-auto absolute right-5 !h-14 !w-14 !p-0"
+      className="glass-btn btn-primary pointer-events-auto absolute right-5 !h-14 !w-14 !p-0 md:hidden"
       style={{ bottom: 'calc(5.75rem + env(safe-area-inset-bottom))' }}
     >
       <Plus size={26} strokeWidth={2.6} />
@@ -52,7 +52,7 @@ export function BottomNav() {
   ]
 
   return (
-    <nav className="glass absolute inset-x-4 bottom-4 z-40 flex items-center justify-between !rounded-full p-1.5" style={{ marginBottom: 'env(safe-area-inset-bottom)' }}>
+    <nav className="glass absolute inset-x-4 bottom-4 z-40 flex md:hidden items-center justify-between !rounded-full p-1.5" style={{ marginBottom: 'env(safe-area-inset-bottom)' }}>
       {TABS.map(({ id, label, icon: Icon }) => {
         const active = tab === id
         return (
@@ -71,6 +71,91 @@ export function BottomNav() {
         )
       })}
     </nav>
+  )
+}
+
+/** Barra di navigazione laterale per desktop e tablet. */
+export function SidebarNav() {
+  const { tab, setTab, openTaskSheet } = useUi()
+  const { db, me } = useApp()
+  const badge = useMemo(() => db.tasks.filter((x) => ['overdue', 'today'].includes(urgencyOf(x)) && !isRunning(x)).length, [db.tasks])
+  const TABS: { id: TabId; label: string; icon: typeof ListChecks }[] = [
+    { id: 'today', label: t('Oggi'), icon: ListChecks },
+    { id: 'rooms', label: t('Stanze'), icon: LayoutGrid },
+    { id: 'ranking', label: t('Sfida'), icon: Trophy },
+    { id: 'settings', label: t('Impostazioni'), icon: Settings },
+  ]
+
+  return (
+    <aside className="glass hidden md:flex w-60 lg:w-64 shrink-0 flex-col justify-between p-5 md:rounded-[2.5rem] select-none h-full">
+      <div className="flex flex-col gap-6">
+        {/* Brand */}
+        <div className="flex items-center gap-3 px-1 pt-1">
+          <MascotImg kind="pair" className="h-11 w-auto shrink-0" />
+          <div className="min-w-0">
+            <h2 className="text-xl font-extrabold tracking-tight text-ink leading-tight">Clean Duo</h2>
+            <p className="truncate text-xs font-semibold text-muted">{db.houseName || t('Casa')}</p>
+          </div>
+        </div>
+
+        {/* Nuova azione CTA */}
+        <button
+          onClick={() => openTaskSheet({})}
+          className="glass-btn btn-primary w-full !py-3 shadow-md hover:scale-[1.02] transition active:scale-95"
+        >
+          <Plus size={18} strokeWidth={2.6} />
+          <span>{t('Nuova azione')}</span>
+        </button>
+
+        {/* Navigation links */}
+        <nav className="flex flex-col gap-1.5">
+          {TABS.map(({ id, label, icon: Icon }) => {
+            const active = tab === id
+            return (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={`relative flex items-center gap-3.5 rounded-2xl px-4 py-3 text-sm font-bold transition active:scale-[0.98] ${
+                  active ? 'text-brand glass-active' : 'text-muted hover:text-ink hover:bg-surface/50'
+                }`}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="sidebar-active"
+                    className="absolute inset-0 rounded-2xl border border-brand/20 bg-brand/10 -z-10"
+                    transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+                  />
+                )}
+                <Icon size={20} strokeWidth={active ? 2.5 : 2} />
+                <span className="flex-1 text-left">{label}</span>
+                {id === 'today' && badge > 0 && (
+                  <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-exp px-1.5 text-[11px] font-bold text-onbrand">
+                    {badge}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </nav>
+      </div>
+
+      {/* Footer / Status */}
+      <div className="flex flex-col gap-3 pt-4 border-t border-line/60">
+        <div className="flex items-center justify-between gap-2">
+          <SyncPill />
+          <div className="flex items-center gap-1.5">
+            <NotificationBell />
+            <MeChip />
+          </div>
+        </div>
+        {me && (
+          <div className="px-1 text-xs text-muted font-medium flex items-center justify-between">
+            <span className="truncate">{t('Accesso come')} <b className="text-ink">{me.name}</b></span>
+            <MascotImg kind="broom" className="h-6 w-auto opacity-70" />
+          </div>
+        )}
+      </div>
+    </aside>
   )
 }
 
@@ -139,7 +224,7 @@ export function NotificationCenter() {
     <Sheet open={centerOpen} onClose={() => setCenterOpen(false)} title={t('Notifiche')}>
       {notifications.length === 0 ? (
         <div className="py-8 text-center text-sm text-muted">
-          <MascotImg kind="mochi" className="mx-auto mb-3 h-20 w-auto" />
+          <MascotImg kind="spray" className="mx-auto mb-3 h-20 w-auto" />
           <p className="font-semibold text-ink">{t('Nessuna notifica')}</p>
           <p className="mx-auto mt-1 max-w-xs">{t('Ti avviso quando un altro membro completa o crea un’azione, quando entra qualcuno in casa e, se vuoi, con un promemoria delle azioni da fare.')}</p>
         </div>

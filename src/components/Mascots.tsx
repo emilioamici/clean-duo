@@ -1,8 +1,20 @@
 import type { ReactNode } from 'react'
 
-/** I due gattini: Zenitsu è il gatto scuro (tema scuro), Mochi quello bianco e arancione (tema chiaro). */
-export type Mascot = 'zenitsu' | 'mochi' | 'pair'
-const FILE: Record<Mascot, string> = { zenitsu: 'cats/zenitsu.png', mochi: 'cats/mochi.png', pair: 'cats/pair.png' }
+/** I gattini e le mascotte per le pulizie:
+ * - zenitsu: gatto scuro (tema scuro)
+ * - mochi: gatto bianco e arancione (tema chiaro)
+ * - pair: la coppia di gatti
+ * - broom: scopa e paletta
+ * - spray: spruzzino / bomboletta spray
+ */
+export type Mascot = 'zenitsu' | 'mochi' | 'pair' | 'broom' | 'spray'
+const FILE: Record<Mascot, string> = {
+  zenitsu: 'cats/zenitsu.png',
+  mochi: 'cats/mochi.png',
+  pair: 'cats/pair.png',
+  broom: 'cats/broom.png',
+  spray: 'cats/spray.png',
+}
 
 export function MascotImg({ kind, className = '' }: { kind: Mascot; className?: string }) {
   // immagine decorativa: nessun testo alternativo e non trascinabile
