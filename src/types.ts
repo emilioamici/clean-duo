@@ -129,8 +129,10 @@ export interface Automation {
   enabled: boolean
   /** `cycle`: codice segreto dell'indirizzo che il dispositivo (IFTTT…) chiama per segnalare inizio e fine */
   hookToken?: string
-  /** `cycle`: membro a cui vanno le stelle quando il ciclo finisce (vuoto = nessuno: si può assegnare dopo dall'azione «in corso») */
+  /** `cycle`: membro a cui vanno le stelle quando il ciclo finisce (vuoto = nessuno: si può assegnare dopo dall'azione «in corso»). `shortcut`: membro per conto del quale si applica il comando */
   assignTo?: string
+  /** `shortcut`: comando predefinito ('todo' | 'complete' | 'start' | 'finish' | '') */
+  action?: string
   /** `shortcut`: ultimo comando che non è stato possibile applicare (es. azione non riconosciuta) */
   lastError?: string
   /** ultima volta che il dispositivo ha segnalato (ms) */

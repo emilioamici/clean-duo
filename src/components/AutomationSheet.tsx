@@ -288,16 +288,17 @@ function ShortcutForm({ id, onClose }: { id?: string; onClose: () => void }) {
   const { openAutomationSheet } = useUi()
   const { db, me } = app
   const existing = (db.automations ?? []).find((a) => a.id === id)
+  const existingTask = existing ? db.tasks.find((x) => x.id === existing.taskId) : undefined
   const [name, setName] = useState(existing?.name ?? 'Shortcuts')
   const [enabled, setEnabled] = useState(existing?.enabled ?? true)
-  const [taskId, setTaskId] = useState(db.tasks.find((x) => !x.archived)?.id ?? '')
-  const [action, setAction] = useState('')
-  const [who, setWho] = useState(me?.id ?? db.members[0]?.id ?? '') // vuoto = nessuno: il link non porta `who`
+  const [taskId, setTaskId] = useState(existing?.taskId || db.tasks.find((x) => !x.archived)?.id || '')
+  const [action, setAction] = useState(existing?.action ?? '')
+  const [who, setWho] = useState(existing ? (existing.assignTo ?? '') : (me?.id ?? db.members[0]?.id ?? ''))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [copied, setCopied] = useState(false)
   const server = pushConfigured() && app.mode === 'drive'
-  const task = db.tasks.find((x) => x.id === taskId)
+  const task = db.tasks.find((x) => x.id === taskId) ?? existingTask
   const url = existing?.hookToken && taskId ? shortcutUrl(existing.hookToken, taskId, action, who) : ''
   const ACTIONS: Array<{ id: string; label: string }> = [
     { id: '', label: t('Automatica: finisce se è in corso, avvia se ha una durata, altrimenti completa') },
@@ -311,7 +312,20 @@ function ShortcutForm({ id, onClose }: { id?: string; onClose: () => void }) {
     setErr(''); setBusy(true)
     try {
       const aid = existing?.id ?? uid('a')
-      const e = await app.saveAutomation({ id: aid, kind: 'shortcut', name: name.trim(), deviceId: '', code: '', op: 'eq', value: '', taskId: '', enabled, hookToken: existing?.hookToken })
+      const e = await app.saveAutomation({
+        id: aid,
+        kind: 'shortcut',
+        name: name.trim(),
+        deviceId: '',
+        code: '',
+        op: 'eq',
+        value: '',
+        taskId,
+        enabled,
+        hookToken: existing?.hookToken,
+        assignTo: who || undefined,
+        action: action || undefined,
+      })
       if (e) { setErr(e); return }
       if (!existing) openAutomationSheet({ id: aid })
       else onClose()
@@ -322,32 +336,36 @@ function ShortcutForm({ id, onClose }: { id?: string; onClose: () => void }) {
     <div>
       {!server && <p className="mb-2 rounded-xl bg-brand/15 p-3 text-sm text-brand">{t('Per collegare un dispositivo serve una casa su Drive e il server delle notifiche (vedi README).')}</p>}
       <p className="rounded-xl bg-brand/10 p-3 text-sm text-muted">{t('Una automazione di Shortcuts chiama un indirizzo con l’azione e il comando: l’app lo applica alla prossima apertura (da qualunque dispositivo della casa).')}</p>
+
       <label className="label">{t('Nome')}</label>
       <input className="field" value={name} onChange={(e) => setName(e.target.value)} />
+
+      <label className="label">{t('Azione')}</label>
+      <select className="field" value={taskId} onChange={(e) => setTaskId(e.target.value)} aria-label={t('Azione')}>
+        {existingTask && !db.tasks.some((x) => x.id === existingTask.id && !x.archived) && (
+          <option value={existingTask.id}>{existingTask.name}</option>
+        )}
+        {db.tasks.filter((x) => !x.archived).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </select>
+
+      <label className="label">{t('Cosa fare')}</label>
+      <select className="field" value={action} onChange={(e) => setAction(e.target.value)} aria-label={t('Cosa fare')}>
+        {ACTIONS.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+      </select>
+
+      <label className="label">{t('Per conto di (a lui vanno le stelle)')}</label>
+      <select className="field" value={who} onChange={(e) => setWho(e.target.value)} aria-label={t('Per conto di (a lui vanno le stelle)')}>
+        <option value="">{t('Nessuno (si può assegnare dopo)')}</option>
+        {db.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+      </select>
+      {!who && <p className="mt-1 px-1 text-xs text-muted">{t('Senza membro, completare non dà stelle; un’azione a tempo parte «in corso» senza assegnatario e chi la prende dall’app con «Assegna a me» avrà le stelle.')}</p>}
+
       <div className="mt-3"><Toggle checked={enabled} onChange={setEnabled} label={t('Automazione attiva')} /></div>
-      {err && <p className="mt-3 rounded-xl bg-exp/10 p-3 text-sm text-exp">{err}</p>}
-      <button type="button" className="glass-btn btn-primary mt-4 w-full !py-3.5" disabled={busy || !name.trim() || !server} onClick={() => void save()}>
-        {busy ? <Loader2 size={18} className="animate-spin" /> : null}{existing ? t('Salva modifiche') : t('Attiva i comandi')}
-      </button>
 
       {existing?.hookToken && (
         <div className="mt-4 rounded-2xl border border-line bg-bg/60 p-3">
           <p className="text-sm font-bold">{t('Crea il link per Shortcuts')}</p>
-          <label className="label !mt-2">{t('Azione')}</label>
-          <select className="field" value={taskId} onChange={(e) => setTaskId(e.target.value)} aria-label={t('Azione')}>
-            {db.tasks.filter((x) => !x.archived).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-          </select>
-          <label className="label">{t('Cosa fare')}</label>
-          <select className="field" value={action} onChange={(e) => setAction(e.target.value)} aria-label={t('Cosa fare')}>
-            {ACTIONS.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
-          </select>
-          <label className="label">{t('Per conto di (a lui vanno le stelle)')}</label>
-          <select className="field" value={who} onChange={(e) => setWho(e.target.value)} aria-label={t('Per conto di (a lui vanno le stelle)')}>
-            <option value="">{t('Nessuno (si può assegnare dopo)')}</option>
-            {db.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
-          </select>
-          {!who && <p className="mt-1 px-1 text-xs text-muted">{t('Senza membro, completare non dà stelle; un’azione a tempo parte «in corso» senza assegnatario e chi la prende dall’app con «Assegna a me» avrà le stelle.')}</p>}
-          <p className="mb-1 mt-3 text-xs font-semibold text-muted">{t('Indirizzo da incollare in Shortcuts')}</p>
+          <p className="mb-1 mt-2 text-xs font-semibold text-muted">{t('Indirizzo da incollare in Shortcuts')}</p>
           <div className="flex gap-2">
             <input readOnly className="field font-mono !text-[11px]" value={url} onFocus={(e) => e.currentTarget.select()} aria-label={t('Indirizzo da incollare in Shortcuts')} />
             <button type="button" className="glass-btn !px-3" aria-label={t('Copia')} onClick={() => { void navigator.clipboard?.writeText(url); setCopied(true); window.setTimeout(() => setCopied(false), 1500) }}>{copied ? <Check size={16} /> : <Copy size={16} />}</button>
@@ -364,6 +382,13 @@ function ShortcutForm({ id, onClose }: { id?: string; onClose: () => void }) {
           <p className="mt-1 text-xs text-muted">{existing.lastFiredAt ? t('Ultimo comando: {when}', { when: timeAgo(existing.lastFiredAt) }) : t('Nessun comando ancora')}</p>
         </div>
       )}
+
+      {err && <p className="mt-3 rounded-xl bg-exp/10 p-3 text-sm text-exp">{err}</p>}
+
+      <button type="button" className="glass-btn btn-primary mt-4 w-full !py-3.5" disabled={busy || !name.trim() || !server} onClick={() => void save()}>
+        {busy ? <Loader2 size={18} className="animate-spin" /> : null}{existing ? t('Salva modifiche') : t('Attiva i comandi')}
+      </button>
+
       {existing && (
         <button type="button" className="glass-btn btn-danger mt-3 w-full" onClick={() => { void app.deleteAutomation(existing.id); onClose() }}><Trash2 size={16} /> {t('Elimina automazione')}</button>
       )}

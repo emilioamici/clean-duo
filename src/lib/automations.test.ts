@@ -193,6 +193,18 @@ describe('comandi da Shortcuts', () => {
     const off = { ...setup(), automations: [{ ...setup().automations[0], enabled: false }] }
     expect(cmd(off, { task: 'Piatti' }).tasks).toEqual(off.tasks)
   })
+
+  it('l\'automazione shortcut conserva taskId, action e assignTo anche dopo il merge', () => {
+    const sc: Automation = { id: 'a-sc', kind: 'shortcut', name: 'Scorciatoia', deviceId: '', code: '', op: 'eq', value: '', taskId: 'lav', action: 'complete', assignTo: 'm1', enabled: true, updatedAt: 1 }
+    const db1 = { ...setup(), automations: [sc] }
+    const db2 = { ...setup(), automations: [{ ...sc, name: 'Scorciatoia aggiornata', taskId: 'dup', action: 'start', assignTo: 'm2', updatedAt: 2 }] }
+    const merged = mergeDb(db1, db2)
+    const auto = merged.automations!.find((a) => a.id === 'a-sc')!
+    expect(auto.name).toBe('Scorciatoia aggiornata')
+    expect(auto.taskId).toBe('dup')
+    expect(auto.action).toBe('start')
+    expect(auto.assignTo).toBe('m2')
+  })
 })
 
 describe('assegnazione delle azioni avviate da un\'automazione', () => {
