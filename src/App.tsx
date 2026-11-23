@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useRef } from 'react'
-import { BottomNav, Background, Celebration, NotificationCenter, NotificationToast, Toast } from './components/Chrome'
+import { BottomNav, SidebarNav, Background, Celebration, NotificationCenter, NotificationToast, Toast } from './components/Chrome'
 import { useLang } from './i18n'
 import { RankingView } from './components/RankingView'
 import { RoomsView } from './components/RoomsView'
@@ -24,13 +24,26 @@ export default function App() {
   return (
     <>
       <Background />
-      <div className="mx-auto flex h-full max-w-md items-stretch md:items-center">
-        {/* guscio "telefono" su desktop */}
-        <div className="relative h-full w-full overflow-hidden md:h-[min(52rem,calc(100dvh-2rem))] md:rounded-[2.75rem] md:border md:border-line md:shadow-[0_40px_100px_-20px_rgb(var(--glass-shade))]">
-          <div ref={scroller} className={`h-full overflow-y-auto overscroll-contain px-4 pt-safe ${gate ? 'pb-6' : 'pb-32'}`}>
-            {gate ? (
+      {gate ? (
+        <div className="mx-auto flex h-full max-w-md items-center justify-center p-4">
+          <div className="relative h-full w-full overflow-hidden rounded-3xl border border-line bg-surface/80 p-4 shadow-xl backdrop-blur-md">
+            <div ref={scroller} className="h-full overflow-y-auto overscroll-contain px-2 py-4">
               <Gate key={gate} reconnect={gate === 'reconnect'} />
-            ) : (
+            </div>
+            <Toast />
+          </div>
+        </div>
+      ) : (
+        <div className="mx-auto flex h-full w-full max-w-7xl items-stretch md:p-6 md:gap-6">
+          {/* Barra laterale per tablet e desktop */}
+          <SidebarNav />
+
+          {/* Pannello principale responsive */}
+          <main className="relative flex-1 h-full min-w-0 overflow-hidden md:rounded-[2.5rem] md:border md:border-line md:shadow-[0_20px_60px_-15px_rgb(var(--glass-shade))] bg-surface/30 md:backdrop-blur-sm">
+            <div
+              ref={scroller}
+              className="h-full overflow-y-auto overscroll-contain px-4 md:px-8 pt-safe md:pt-6 pb-28 md:pb-8"
+            >
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
                   key={tab}
@@ -38,7 +51,7 @@ export default function App() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                   transition={{ duration: 0.18 }}
-                  className="pt-4"
+                  className="pt-2 md:pt-0 max-w-5xl mx-auto"
                 >
                   {tab === 'today' && <TodayView />}
                   {tab === 'rooms' && <RoomsView />}
@@ -46,24 +59,21 @@ export default function App() {
                   {tab === 'settings' && <SettingsView />}
                 </motion.div>
               </AnimatePresence>
-            )}
-          </div>
-          {!gate && <div id="shell-overlay" className="pointer-events-none absolute inset-0 z-30" />}
-          {!gate && (
-            <>
-              <BottomNav />
-              <TaskSheet />
-              <RoomSheet />
-              <MemberSheet />
-              <AutomationSheet />
-              <MemberSwitcher />
-              <NotificationCenter />
-              <NotificationToast />
-            </>
-          )}
-          <Toast />
+            </div>
+
+            <div id="shell-overlay" className="pointer-events-none absolute inset-0 z-30" />
+            <BottomNav />
+            <TaskSheet />
+            <RoomSheet />
+            <MemberSheet />
+            <AutomationSheet />
+            <MemberSwitcher />
+            <NotificationCenter />
+            <NotificationToast />
+            <Toast />
+          </main>
         </div>
-      </div>
+      )}
       <Celebration />
     </>
   )

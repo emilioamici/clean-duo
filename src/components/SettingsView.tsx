@@ -34,40 +34,52 @@ export function SettingsView() {
 
   return (
     <div>
-      <PageHeader title={t('Impostazioni')} subtitle={t('Casa, membri e sincronizzazione')} right={<><SyncPill /><NotificationBell /></>} />
+      <PageHeader
+        title={t('Impostazioni')}
+        subtitle={t('Casa, membri e sincronizzazione')}
+        right={
+          <div className="flex md:hidden items-center gap-2">
+            <SyncPill /><NotificationBell />
+          </div>
+        }
+      />
 
-      <div className="space-y-3">
-        <MascotPeek kind="pair">
-          <Accordion title={t('Aspetto')} icon={<Palette size={20} />} open={!!open.look} onToggle={() => flip('look')} summary={`${t(THEME_NAME[app.theme])} · ${getLangPref() === 'auto' ? t('Automatico') : LANG_NAME[getLangPref()]}`}>
-            <AppearanceCard />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        <div className="space-y-4">
+          <MascotPeek kind="pair">
+            <Accordion title={t('Aspetto')} icon={<Palette size={20} />} open={!!open.look} onToggle={() => flip('look')} summary={`${t(THEME_NAME[app.theme])} · ${getLangPref() === 'auto' ? t('Automatico') : LANG_NAME[getLangPref()]}`}>
+              <AppearanceCard />
+            </Accordion>
+          </MascotPeek>
+
+          <Accordion title={t('Casa e membri')} icon={<Users size={20} />} open={!!open.house} onToggle={() => flip('house')} summary={`${db.houseName} · ${db.members.length === 1 ? t('1 membro') : t('{n} membri', { n: db.members.length })}`}>
+            <FamilyCard />
           </Accordion>
-        </MascotPeek>
 
-        <Accordion title={t('Casa e membri')} icon={<Users size={20} />} open={!!open.house} onToggle={() => flip('house')} summary={`${db.houseName} · ${db.members.length === 1 ? t('1 membro') : t('{n} membri', { n: db.members.length })}`}>
-          <FamilyCard />
-        </Accordion>
+          <Accordion title={t('Notifiche')} icon={<BellRing size={20} />} open={!!open.notif} onToggle={() => flip('notif')} summary={notifOn ? t('Attive su questo dispositivo') : t('Disattivate (solo la campanella)')}>
+            <NotificationsCard />
+          </Accordion>
+        </div>
 
-        <Accordion title={t('Sincronizzazione e account')} icon={<Cloud size={20} />} open={!!open.drive} onToggle={() => flip('drive')} summary={`${syncLabel}${user?.email ? ` · ${user.email}` : ''}`}>
-          <DriveSection />
-        </Accordion>
+        <div className="space-y-4">
+          <Accordion title={t('Sincronizzazione e account')} icon={<Cloud size={20} />} open={!!open.drive} onToggle={() => flip('drive')} summary={`${syncLabel}${user?.email ? ` · ${user.email}` : ''}`}>
+            <DriveSection />
+          </Accordion>
 
-        <Accordion title={t('Notifiche')} icon={<BellRing size={20} />} open={!!open.notif} onToggle={() => flip('notif')} summary={notifOn ? t('Attive su questo dispositivo') : t('Disattivate (solo la campanella)')}>
-          <NotificationsCard />
-        </Accordion>
+          <Accordion title={t('Automazioni')} icon={<Zap size={20} />} open={!!open.auto} onToggle={() => flip('auto')}
+            summary={(db.automations?.length ?? 0) > 0 ? t('{n} dispositivi collegati', { n: db.automations!.length }) : t('Collega i dispositivi di casa')}>
+            <AutomationsCard />
+          </Accordion>
 
-        <Accordion title={t('Automazioni')} icon={<Zap size={20} />} open={!!open.auto} onToggle={() => flip('auto')}
-          summary={(db.automations?.length ?? 0) > 0 ? t('{n} dispositivi collegati', { n: db.automations!.length }) : t('Collega i dispositivi di casa')}>
-          <AutomationsCard />
-        </Accordion>
-
-        <Accordion title={t('Dati')} icon={<Database size={20} />} open={!!open.data} onToggle={() => flip('data')} summary={t('{a} azioni · {b} stanze', { a: db.tasks.length, b: db.rooms.length })}>
-          <button className="glass-btn w-full" onClick={() => { if (confirm(mode === 'drive' ? t('Ripristinare i dati demo scollega la casa da Drive (il file su Drive resta intatto). Continuare?') : t('Ripristinare i dati demo? Le modifiche locali andranno perse.'))) app.resetDemo() }}>
-            <RotateCcw size={16} /> {t('Ripristina dati demo')}
-          </button>
-        </Accordion>
-
-        <p className="flex gap-2 px-1 pb-4 text-xs text-muted"><ShieldCheck size={16} className="shrink-0" />{t('I dati restano nel tuo Google Drive e su questo dispositivo. Il server della casa (il tuo Cloudflare Worker) li fa solo transitare per gli invitati e non li conserva.')} · Clean Duo v1.1 · <a className="font-semibold text-brand" href={`${import.meta.env.BASE_URL}privacy.html`} target="_blank" rel="noreferrer">{t('Privacy')}</a></p>
+          <Accordion title={t('Dati')} icon={<Database size={20} />} open={!!open.data} onToggle={() => flip('data')} summary={t('{a} azioni · {b} stanze', { a: db.tasks.length, b: db.rooms.length })}>
+            <button className="glass-btn w-full" onClick={() => { if (confirm(mode === 'drive' ? t('Ripristinare i dati demo scollega la casa da Drive (il file su Drive resta intatto). Continuare?') : t('Ripristinare i dati demo? Le modifiche locali andranno perse.'))) app.resetDemo() }}>
+              <RotateCcw size={16} /> {t('Ripristina dati demo')}
+            </button>
+          </Accordion>
+        </div>
       </div>
+
+      <p className="mt-6 flex gap-2 px-1 pb-4 text-xs text-muted"><ShieldCheck size={16} className="shrink-0" />{t('I dati restano nel tuo Google Drive e su questo dispositivo. Il server della casa (il tuo Cloudflare Worker) li fa solo transitare per gli invitati e non li conserva.')} · Clean Duo v1.1 · <a className="font-semibold text-brand" href={`${import.meta.env.BASE_URL}privacy.html`} target="_blank" rel="noreferrer">{t('Privacy')}</a></p>
     </div>
   )
 }

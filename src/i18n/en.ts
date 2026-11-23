@@ -1,5 +1,13 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "Casa": "Home",
+  "Accesso come": "Signed in as",
+  "{n} azioni programmate": "{n} scheduled tasks",
+  "Pulizie di casa": "Home cleaning",
+  "Piccole abitudini quotidiane per una casa che splende.": "Small daily habits for a sparkling home.",
+  "Da fare oggi": "To do today",
+  "In corso": "In progress",
+  "{n} azioni richiedono attenzione!": "{n} tasks need attention!",
   "«{task}» è tua: a fine corsa le stelle vanno a te.": "“{task}” is yours: you get the stars when it ends.",
   "Scegli prima chi sei (Impostazioni → Casa e membri).": "First choose who you are (Settings → House and members).",
   "Nessuno ci sta lavorando: assegnala a te per avere le stelle. Scorri a sinistra per completarla ora.": "Nobody is working on it: assign it to yourself to get the stars. Swipe left to complete it now.",

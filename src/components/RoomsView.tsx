@@ -24,9 +24,13 @@ function RoomGrid() {
 
   return (
     <div>
-      <PageHeader title={t('Stanze')} subtitle={t('Pulizia media della casa: {n}%', { n: overall })} right={<NotificationBell />} />
+      <PageHeader
+        title={t('Stanze')}
+        subtitle={t('Pulizia media della casa: {n}%', { n: overall })}
+        right={<div className="flex md:hidden items-center"><NotificationBell /></div>}
+      />
       <MascotPeek kind="mochi">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {db.rooms.map((r, i) => {
             const pct = roomCleanliness(r, db.tasks)
             const due = db.tasks.filter((x) => inRoom(x, r.id) && !isRunning(x) && ['overdue', 'today'].includes(urgencyOf(x, Date.now(), r.id))).length
@@ -36,7 +40,7 @@ function RoomGrid() {
                 initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
                 whileTap={{ scale: 0.96 }}
                 onClick={() => openRoom(r.id)}
-                className="card flex flex-col gap-3 p-4 text-left"
+                className="card flex flex-col gap-3 p-4 text-left hover:scale-[1.01] transition"
               >
                 <span className="flex items-start justify-between">
                   <span className="flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-inner" style={{ background: `linear-gradient(135deg, ${r.color}, ${r.color}99)` }}>
@@ -52,7 +56,7 @@ function RoomGrid() {
               </motion.button>
             )
           })}
-          <button onClick={() => openRoomSheet({})} className="flex min-h-[10.5rem] flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-line text-muted transition active:scale-95">
+          <button onClick={() => openRoomSheet({})} className="flex min-h-[10.5rem] flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-line text-muted transition hover:border-brand/40 hover:text-brand active:scale-95">
             <Plus size={26} /><span className="text-sm font-semibold">{t('Aggiungi stanza')}</span>
           </button>
         </div>
@@ -76,25 +80,35 @@ function RoomDetail() {
         left={<button className="glass-btn !p-2.5" onClick={() => openRoom(null)} aria-label={t('Indietro')}><ChevronLeft size={20} /></button>}
         right={<button className="glass-btn !p-2.5" onClick={() => openRoomSheet({ id: room.id })} aria-label={t('Modifica stanza')}><Pencil size={18} /></button>}
       />
-      <MascotPeek kind="zenitsu" side="left">
-        <div className="card flex items-center gap-4 p-4">
-          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl text-white shadow-inner" style={{ background: `linear-gradient(135deg, ${room.color}, ${room.color}99)` }}>
-            <RoomIcon name={room.icon} size={32} />
-          </span>
-          <div className="flex-1">
-            <p className="text-3xl font-extrabold" style={{ color: cleanColor(pct) }}>{pct}%</p>
-            <p className="mb-2 text-xs text-muted">{t('stato di pulizia')}</p>
-            <CleanBar pct={pct} height={10} />
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-12 lg:gap-8 items-start">
+        <div className="lg:col-span-4">
+          <MascotPeek kind="broom" side="left">
+            <div className="card flex flex-col gap-4 p-5">
+              <div className="flex items-center gap-4">
+                <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-3xl text-white shadow-inner" style={{ background: `linear-gradient(135deg, ${room.color}, ${room.color}99)` }}>
+                  <RoomIcon name={room.icon} size={32} />
+                </span>
+                <div className="flex-1">
+                  <p className="text-3xl font-extrabold" style={{ color: cleanColor(pct) }}>{pct}%</p>
+                  <p className="text-xs text-muted">{t('stato di pulizia')}</p>
+                </div>
+              </div>
+              <CleanBar pct={pct} height={10} />
+              <div className="pt-2 text-xs text-muted border-t border-line/60 flex items-center justify-between">
+                <span>{t('{n} azioni programmate', { n: tasks.length })}</span>
+                <MascotImg kind="spray" className="h-6 w-auto opacity-70" />
+              </div>
+            </div>
+          </MascotPeek>
         </div>
-      </MascotPeek>
-      <div className="mt-4 space-y-3">
-        <AnimatePresence mode="popLayout">{tasks.map((x) => <TaskRow key={x.id} task={x} showRoom={false} roomId={room.id} />)}</AnimatePresence>
-        {tasks.length === 0 && (
-          <div className="card flex flex-col items-center gap-2 px-4 py-6 text-center text-sm text-muted">
-            <MascotImg kind="mochi" className="h-16 w-auto" />{t('Nessuna azione in questa stanza.')}
-          </div>
-        )}
+        <div className="lg:col-span-8 space-y-3 mt-4 lg:mt-0">
+          <AnimatePresence mode="popLayout">{tasks.map((x) => <TaskRow key={x.id} task={x} showRoom={false} roomId={room.id} />)}</AnimatePresence>
+          {tasks.length === 0 && (
+            <div className="card flex flex-col items-center gap-2 px-4 py-8 text-center text-sm text-muted">
+              <MascotImg kind="spray" className="h-16 w-auto" />{t('Nessuna azione in questa stanza.')}
+            </div>
+          )}
+        </div>
       </div>
       <Fab label={t('Nuova azione')} onClick={() => openTaskSheet({ roomId: room.id })} />
     </div>

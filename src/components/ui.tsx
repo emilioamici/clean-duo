@@ -85,17 +85,17 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center md:absolute">
+        <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4">
           <motion.div className="absolute inset-0 bg-ink/30 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.div
-            className="glass-strong relative z-10 flex max-h-[92%] w-full max-w-md flex-col rounded-b-none"
+            className="glass-strong relative z-10 flex max-h-[92%] w-full max-w-md md:max-w-xl flex-col rounded-t-3xl rounded-b-none md:rounded-3xl shadow-2xl"
             initial={{ y: 48, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: '100%', opacity: 0 }}
             transition={{ type: 'spring', stiffness: 380, damping: 38 }}
             drag="y" dragControls={controls} dragListener={false} dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 0.6 }}
             onDragEnd={(_, i) => { if (i.offset.y > 120 || i.velocity.y > 600) onClose() }}
           >
-            <div className="flex cursor-grab touch-none justify-center pb-1 pt-3" onPointerDown={(e) => controls.start(e)}><div className="h-1.5 w-10 rounded-full bg-muted/50" /></div>
-            <div className="flex items-center justify-between px-5 pb-1">
+            <div className="flex cursor-grab touch-none justify-center pb-1 pt-3 md:hidden" onPointerDown={(e) => controls.start(e)}><div className="h-1.5 w-10 rounded-full bg-muted/50" /></div>
+            <div className="flex items-center justify-between px-5 pb-1 md:pt-4">
               <h2 className="text-xl font-bold">{title}</h2>
               <button onClick={onClose} className="glass-btn !p-2" aria-label={t('Chiudi')}><X size={18} /></button>
             </div>
