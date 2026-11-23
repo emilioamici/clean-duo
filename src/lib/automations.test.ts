@@ -171,14 +171,13 @@ describe('comandi da Shortcuts', () => {
     expect(get(applyAutomationEvents(merged, [ev], now), 'lav').runningUntil).toBe(get(once, 'lav').runningUntil)
   })
 
-  it('nome sbagliato o ambiguo: nessun effetto e l\'errore si vede; membro sconosciuto: nessuna stella; start a tempo senza membro: ignorato', () => {
+  it('nome sbagliato o ambiguo: nessun effetto e l\'errore si vede; membro sconosciuto: nessuna stella', () => {
     const wrong = cmd(setup(), { task: 'Inesistente' })
     expect(wrong.automations![0].lastError).toContain('non riconosciuta')
     expect(wrong.tasks).toEqual(setup().tasks)
     expect(cmd(setup(), { task: 'Piatti' }).automations![0].lastError).toContain('Più azioni')
     const noStars = cmd(setup(), { task: 'pia', who: 'sconosciuto' })
     expect(noStars.logs[0]).toMatchObject({ memberId: '', stars: 0, auto: true })
-    expect(get(cmd(setup(), { task: 'Lavatrice', who: undefined }), 'lav').runningUntil).toBeFalsy()
   })
 
   it('i timer già scaduti si chiudono all\'ora giusta prima del comando: «avvia» dopo un timer finito avvia, non finisce', () => {
@@ -192,5 +191,54 @@ describe('comandi da Shortcuts', () => {
   it('automazione disattivata: nessun effetto', () => {
     const off = { ...setup(), automations: [{ ...setup().automations[0], enabled: false }] }
     expect(cmd(off, { task: 'Piatti' }).tasks).toEqual(off.tasks)
+  })
+})
+
+describe('assegnazione delle azioni avviate da un\'automazione', () => {
+  const now = Date.now()
+  const setup = () => {
+    const db = createDemoDb()
+    const lav = { ...db.tasks[0], id: 'lav', name: 'Lavatrice', durationMin: 60, recurrence: { type: 'weekly' as const, every: 1 }, lastCompletedAt: null, completions: 0, runningUntil: null, autoRunSince: null }
+    const auto = { id: 'a-sc', kind: 'shortcut' as const, name: 'Shortcuts', deviceId: '', code: '', op: 'eq' as const, value: '', taskId: '', enabled: true, updatedAt: 1 }
+    return { ...db, tasks: [lav, ...db.tasks.slice(1)], automations: [auto], logs: [] }
+  }
+  const ev = (over: object, at: number) => ({ id: `e${at}`, ruleId: 'a-sc', at, kind: 'act' as const, task: 'lav', ...over })
+  const lavOf = (d: AppDatabase) => d.tasks.find((x) => x.id === 'lav')!
+
+  it('senza «who» l\'azione a tempo parte «in corso» senza assegnatario; a fine tempo si completa senza stelle (non al primo membro)', async () => {
+    const { finalizeTimers } = await import('./timers')
+    const started = applyAutomationEvents(setup(), [ev({}, now - 1000)], now)
+    expect(lavOf(started).runningUntil).toBe(now - 1000 + 3_600_000); expect(lavOf(started).runningBy).toBeUndefined()
+    const ended = finalizeTimers(started, now + 3_700_000)
+    expect(ended.logs[0]).toMatchObject({ taskId: 'lav', memberId: '', stars: 0, auto: true, timer: true })
+  })
+
+  it('«finish» vale solo se l\'azione è davvero in corso; se l\'ha avviata a mano un membro, le stelle sono sue', () => {
+    const idle = applyAutomationEvents(setup(), [ev({ do: 'finish', who: 'm2' }, now - 1000)], now)
+    expect(lavOf(idle).completions).toBe(0); expect(idle.logs).toHaveLength(0)
+    expect(idle.automations![0].lastError).toContain('non applicabile')
+    // avviata a mano da m1 (timer con assegnatario), poi il comando «finish» dell'automazione
+    const manual = { ...setup(), tasks: setup().tasks.map((x) => (x.id === 'lav' ? { ...x, runningUntil: now + 3_000_000, runningBy: 'm1' } : x)) }
+    const done = applyAutomationEvents(manual, [ev({ do: 'finish' }, now - 500)], now)
+    expect(lavOf(done).runningUntil).toBeNull(); expect(done.logs[0]).toMatchObject({ memberId: 'm1', stars: lavOf(done).stars })
+    // timer già scaduto prima del comando: si chiude da sé e «finish» non fa nulla in più
+    const expired = { ...manual, tasks: manual.tasks.map((x) => (x.id === 'lav' ? { ...x, runningUntil: now - 5000 } : x)) }
+    const late = applyAutomationEvents(expired, [ev({ do: 'finish' }, now - 1000)], now)
+    expect(late.logs.filter((l) => l.taskId === 'lav')).toHaveLength(1)
+  })
+
+  it('senza assegnatario, chi dà «finish» con un membro se lo prende; per un ciclo l\'automazione può assegnare di base', () => {
+    const started = applyAutomationEvents(setup(), [ev({}, now - 5000)], now)
+    const done = applyAutomationEvents(started, [ev({ do: 'finish', who: 'm2' }, now - 1000)], now)
+    expect(done.logs[0]).toMatchObject({ memberId: 'm2', stars: lavOf(done).stars })
+    const cycle = { ...setup(), automations: [{ id: 'a-cy', kind: 'cycle' as const, name: 'Roomba', deviceId: '', code: '', op: 'eq' as const, value: '', taskId: 'lav', enabled: true, assignTo: 'm2', updatedAt: 1 }], tasks: setup().tasks.map((x) => (x.id === 'lav' ? { ...x, durationMin: undefined } : x)) }
+    const s = applyAutomationEvents(cycle, [{ id: 'c1', ruleId: 'a-cy', at: now - 5000, kind: 'start' }], now)
+    expect(lavOf(s).runningBy).toBe('m2')
+    const f = applyAutomationEvents(s, [{ id: 'c2', ruleId: 'a-cy', at: now - 1000, kind: 'finish' }], now)
+    expect(f.logs[0]).toMatchObject({ memberId: 'm2', stars: lavOf(f).stars, timer: true })
+    expect(f.logs[0].auto).toBeFalsy()
+    // senza assegnazione nessuna stella
+    const none = applyAutomationEvents(applyAutomationEvents({ ...cycle, automations: [{ ...cycle.automations[0], assignTo: undefined }] }, [{ id: 'c1', ruleId: 'a-cy', at: now - 5000, kind: 'start' }], now), [{ id: 'c2', ruleId: 'a-cy', at: now - 1000, kind: 'finish' }], now)
+    expect(none.logs[0]).toMatchObject({ memberId: '', stars: 0, auto: true })
   })
 })

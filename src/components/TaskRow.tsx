@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { Check, ClipboardList, Link2, Play, Repeat, StickyNote, Timer, X } from 'lucide-react'
+import { Check, ClipboardList, Link2, Play, Repeat, StickyNote, Timer, UserCheck, UserX, X } from 'lucide-react'
 import { useState } from 'react'
 import type { Task } from '../types'
 import { currentAssignee, dueLabel, nextDue, recurrenceLabel, urgencyOf, type Urgency } from '../lib/clean'
@@ -28,7 +28,7 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
   const { db } = useApp()
   const [noteOpen, setNoteOpen] = useState(false)
   const { complete, finish, openTaskSheet } = useUi()
-  const { cancelTimer, markTodo } = useApp()
+  const { cancelTimer, markTodo, assignRunning } = useApp()
   const now = useNow(15_000)
   const running = isRunning(task)
   const before = task.afterTaskId ? db.tasks.find((x) => x.id === task.afterTaskId) : undefined
@@ -39,6 +39,9 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
   const roomNames = rooms.length > 2 ? t('{n} stanze', { n: rooms.length }) : rooms.map((r) => r.name).join(', ')
   const assignee = db.members.find((m) => m.id === currentAssignee(task))
   const u = urgencyOf(task, now, roomId)
+  // «in corso» senza assegnatario (avviata da un'automazione): si prende con «Assegna a me»; «Completa ora» passa allo swipe
+  const unassigned = running && !db.members.some((m) => m.id === task.runningBy)
+  const holder = running ? db.members.find((m) => m.id === task.runningBy) : undefined
 
   return (
     <motion.div
@@ -49,7 +52,13 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
       transition={{ type: 'spring', stiffness: 400, damping: 34 }}
       className="card"
     >
-      <div className="flex items-center gap-3 p-3">
+      <div className="relative overflow-hidden rounded-[inherit]">
+      {unassigned && <div aria-hidden className="absolute inset-0 flex items-center justify-end gap-2 bg-inc/20 pr-5 text-sm font-bold text-inc"><Check size={18} strokeWidth={3} />{t('Completa ora')}</div>}
+      <motion.div
+        drag={unassigned ? 'x' : false} dragDirectionLock dragConstraints={{ left: 0, right: 0 }} dragElastic={{ left: 0.5, right: 0 }}
+        onDragEnd={(_, info) => { if (unassigned && (info.offset.x < -110 || (info.offset.x < -60 && info.velocity.x < -600))) finish(task.id, { x: window.innerWidth / 2, y: window.innerHeight / 2 }) }}
+        className={`flex items-center gap-3 p-3 ${unassigned ? 'relative bg-surface' : ''}`} data-swipe={unassigned || undefined}
+      >
       <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => openTaskSheet({ id: task.id })}>
         {(showRoom || task.icon) && room && (
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white shadow-inner" style={{ background: `linear-gradient(135deg, ${room.color}, ${room.color}aa)` }}>
@@ -80,7 +89,7 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
           </span>
         </span>
       </button>
-      {assignee && <Avatar member={assignee} size={28} />}
+      {(holder ?? (running ? undefined : assignee)) && <Avatar member={(holder ?? assignee)!} size={28} />}
       {running ? (
         <span className="flex shrink-0 items-center gap-2">
           <motion.button
@@ -91,17 +100,29 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
           >
             <X size={18} strokeWidth={2.6} />
           </motion.button>
-          <motion.button
-            whileTap={{ scale: 0.82 }}
-            onClick={(e) => {
-              const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-              finish(task.id, { x: r.left + r.width / 2, y: r.top + r.height / 2 })
-            }}
-            className="glass-btn btn-primary !h-12 !w-12 !p-0"
-            aria-label={t('Completa ora {name}', { name: task.name })}
-          >
-            <Check size={24} strokeWidth={3} />
-          </motion.button>
+          {unassigned ? (
+            <motion.button
+              whileTap={{ scale: 0.82 }}
+              onClick={() => assignRunning(task.id)}
+              className="glass-btn btn-primary !h-12 !w-12 !p-0"
+              aria-label={t('Assegna «{name}» a me', { name: task.name })}
+              title={t('Assegna a me')}
+            >
+              <UserCheck size={22} strokeWidth={2.6} />
+            </motion.button>
+          ) : (
+            <motion.button
+              whileTap={{ scale: 0.82 }}
+              onClick={(e) => {
+                const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                finish(task.id, { x: r.left + r.width / 2, y: r.top + r.height / 2 })
+              }}
+              className="glass-btn btn-primary !h-12 !w-12 !p-0"
+              aria-label={t('Completa ora {name}', { name: task.name })}
+            >
+              <Check size={24} strokeWidth={3} />
+            </motion.button>
+          )}
         </span>
       ) : (
         <>
@@ -128,6 +149,10 @@ export function TaskRow({ task, showRoom = true, roomId }: { task: Task; showRoo
           {task.durationMin ? <Play size={22} strokeWidth={2.6} className="fill-current" /> : <Check size={24} strokeWidth={3} />}
         </motion.button>
         </>
+      )}
+      </motion.div>
+      {unassigned && (
+        <div className="relative flex items-center gap-2 border-t border-line/60 bg-brand/10 px-3 py-2 text-xs font-semibold text-brand"><UserX size={13} className="shrink-0" />{t('Nessuno ci sta lavorando: assegnala a te per avere le stelle. Scorri a sinistra per completarla ora.')}</div>
       )}
       </div>
       {task.notes && (

@@ -28,22 +28,27 @@ function runCommand(db: AppDatabase, auto: Automation, e: AutomationEvent, now: 
   db = finalizeTimers(db, e.at)
   let task = db.tasks.find((x) => x.id === found[0].id)!
   if (task.lastCommandAt && task.lastCommandAt >= e.at) return db
-  const who = e.who && db.members.some((m) => m.id === e.who) ? e.who : null
+  const isMember = (id?: string | null): id is string => !!id && db.members.some((m) => m.id === id)
+  const who = isMember(e.who) ? e.who : null
+  // chi ha avviato l'azione la tiene: un comando «finisci» si limita a chiuderla; se non ha assegnatario, ci si assegna chi dà il comando (se c'è)
+  const owner = isMember(task.runningBy) ? task.runningBy : who
   const running = isRunning(task)
   const action = e.do ?? (running ? 'finish' : task.durationMin ? 'start' : 'complete')
   const stamp = (x: Task): Task => ({ ...x, lastCommandAt: e.at, updatedAt: now })
 
   let next: AppDatabase | null = null
   if (action === 'finish') {
-    if (task.runningUntil) next = finishEarly(db, task.id, now, e.at)
-    else if (running) next = completeBy(db, task, who, e, now) // «in corso» da dispositivo: si completa
+    // «finisci» vale solo se l'azione è davvero in corso: altrimenti non si fa nulla (e l'errore si vede nella scheda)
+    if (task.runningUntil) next = finishEarly({ ...db, tasks: db.tasks.map((x) => (x.id === task.id ? { ...x, runningBy: owner ?? undefined } : x)) }, task.id, now, e.at)
+    else if (running) next = completeBy(db, task, owner, `l-sc-${e.id}`, e.at, now) // «in corso» da dispositivo: si completa
   } else if (action === 'start') {
     if (!running) {
-      if (task.durationMin && who) next = { ...db, tasks: db.tasks.map((x) => (x.id === task.id ? startRunning(x, who, e.at, undefined) : x)) }
-      else if (!task.durationMin) next = { ...db, tasks: db.tasks.map((x) => (x.id === task.id ? { ...x, autoRunSince: e.at, autoRunRule: auto.id } : x)) }
+      // senza membro (`who` assente o sconosciuto) parte senza assegnatario: qualcuno può prenderla dopo con «Assegna a me»
+      if (task.durationMin) next = { ...db, tasks: db.tasks.map((x) => (x.id === task.id ? startRunning(x, who ?? undefined, e.at, undefined) : x)) }
+      else next = { ...db, tasks: db.tasks.map((x) => (x.id === task.id ? { ...x, autoRunSince: e.at, autoRunRule: auto.id, runningBy: who ?? undefined } : x)) }
     }
   } else if (action === 'complete') {
-    if (!(task.lastCompletedAt && task.lastCompletedAt >= e.at)) next = completeBy(db, task, who, e, now)
+    if (!(task.lastCompletedAt && task.lastCompletedAt >= e.at)) next = completeBy(db, task, who, `l-sc-${e.id}`, e.at, now)
   } else if (action === 'todo') {
     if (isOnDemand(task)) next = { ...db, tasks: db.tasks.map((x) => (x.id === task.id ? { ...x, todoAt: Math.max(e.at, (x.lastCompletedAt ?? 0) + 1) } : x)) }
   }
@@ -52,17 +57,19 @@ function runCommand(db: AppDatabase, auto: Automation, e: AutomationEvent, now: 
   return { ...next, tasks: next.tasks.map((x) => (x.id === task.id ? stamp(x) : x)), automations: (mark().automations) }
 }
 
-/** Completa un'azione per un comando: a un membro (stelle) oppure senza membro né stelle. Log con id stabile. */
-function completeBy(db: AppDatabase, task: Task, who: string | null, e: AutomationEvent, now: number): AppDatabase {
-  const id = `l-sc-${e.id}`
+/**
+ * Completa un'azione «in corso» o richiesta da un'automazione: a un membro (stelle) oppure senza membro né stelle.
+ * `id` stabile: lo stesso comando applicato due volte non duplica il completamento.
+ */
+export function completeBy(db: AppDatabase, task: Task, who: string | null, id: string, at: number, now: number, flags: Partial<ActivityLog> = {}): AppDatabase {
   if (db.logs.some((l) => l.id === id)) return db
   const rooms = taskRooms(task)
   const log: ActivityLog = {
     id, taskId: task.id, taskName: task.name, roomId: rooms[0], ...(rooms.length > 1 ? { roomIds: rooms } : {}),
-    memberId: who ?? '', stars: who ? task.stars : 0, at: e.at, ...(who ? {} : { timer: true, auto: true }),
-    prev: task.lastCompletedAt, prevTrigger: task.triggeredAt ?? null, prevRoomDone: task.roomDone ?? null,
+    memberId: who ?? '', stars: who ? task.stars : 0, at, ...(who ? {} : { timer: true, auto: true }),
+    prev: task.lastCompletedAt, prevTrigger: task.triggeredAt ?? null, prevRoomDone: task.roomDone ?? null, ...flags,
   }
-  const tasks = triggerDependents(db.tasks.map((x) => (x.id === task.id ? applyCompletion(x, rooms, e.at, now) : x)), task.id, e.at, now)
+  const tasks = triggerDependents(db.tasks.map((x) => (x.id === task.id ? applyCompletion(x, rooms, at, now) : x)), task.id, at, now)
   return { ...db, tasks, logs: [log, ...db.logs].slice(0, 2000) }
 }
 
@@ -96,18 +103,15 @@ export function applyAutomationEvents(db: AppDatabase, events: AutomationEvent[]
         if (e.at + AUTO_RUN_MAX_MS <= now) continue // segnale troppo vecchio: il ciclo sarà già finito
         if (task.runningUntil || (task.autoRunSince && task.autoRunSince >= e.at)) continue
         if (task.lastCompletedAt && task.lastCompletedAt >= e.at) continue // il «finito» è già stato applicato (segnali fuori ordine)
-        tasks = tasks.map((x) => (x.id === task.id ? { ...x, autoRunSince: e.at, autoRunRule: auto.id, updatedAt: now } : x))
+        const assignee = auto.assignTo && db.members.some((m) => m.id === auto.assignTo) ? auto.assignTo : undefined
+        tasks = tasks.map((x) => (x.id === task.id ? { ...x, autoRunSince: e.at, autoRunRule: auto.id, runningBy: assignee, updatedAt: now } : x))
       } else if (e.kind === 'finish') {
         const id = cycleLogId(auto.id, e.at)
         if (logs.some((l) => l.id === id) || (task.lastCompletedAt && task.lastCompletedAt >= e.at)) continue
-        const rooms = taskRooms(task)
-        const log: ActivityLog = {
-          id, taskId: task.id, taskName: task.name, roomId: rooms[0], ...(rooms.length > 1 ? { roomIds: rooms } : {}),
-          memberId: '', stars: 0, at: e.at, timer: true, auto: true,
-          prev: task.lastCompletedAt, prevTrigger: task.triggeredAt ?? null, prevRoomDone: task.roomDone ?? null,
-        }
-        tasks = triggerDependents(tasks.map((x) => (x.id === task.id ? applyCompletion(x, rooms, e.at, now) : x)), task.id, e.at, now)
-        logs = [log, ...logs].slice(0, 2000)
+        // le stelle vanno a chi si è assegnato il ciclo (o a chi l'automazione assegna di base); se nessuno, nessuna stella
+        const who = task.autoRunSince && task.runningBy && db.members.some((m) => m.id === task.runningBy) ? task.runningBy : null
+        const out = completeBy({ ...db, tasks, logs, automations }, task, who, id, e.at, now, { timer: true, ...(who ? {} : { auto: true }) })
+        tasks = out.tasks; logs = out.logs
       } else continue
       touch(auto.id, e.at)
       changed = true

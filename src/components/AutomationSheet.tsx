@@ -172,6 +172,7 @@ function CycleForm({ id, onClose }: { id?: string; onClose: () => void }) {
   const existing = (db.automations ?? []).find((a) => a.id === id)
   const [name, setName] = useState(existing?.name ?? 'Roomba')
   const [enabled, setEnabled] = useState(existing?.enabled ?? true)
+  const [assignTo, setAssignTo] = useState(existing?.assignTo ?? '')
   const [useExisting, setUseExisting] = useState(!!existing)
   const [taskId, setTaskId] = useState(existing?.taskId ?? db.tasks.find((x) => !x.onEvent && !x.afterTaskId && !x.archived)?.id ?? '')
   const [newName, setNewName] = useState(t('Passare l’aspirapolvere'))
@@ -194,7 +195,7 @@ function CycleForm({ id, onClose }: { id?: string; onClose: () => void }) {
         app.upsertTask({ id: target, roomId, name: newName.trim(), stars: 2, assignment: { mode: 'anyone' }, recurrence: { type: 'weekly', every: 1 } })
       }
       const aid = existing?.id ?? uid('a')
-      const e = await app.saveAutomation({ id: aid, kind: 'cycle', name: name.trim(), deviceId: '', code: '', op: 'eq', value: '', taskId: target, enabled, hookToken: existing?.hookToken })
+      const e = await app.saveAutomation({ id: aid, kind: 'cycle', name: name.trim(), deviceId: '', code: '', op: 'eq', value: '', taskId: target, enabled, hookToken: existing?.hookToken, assignTo: assignTo || undefined })
       if (e) { setErr(e); return }
       if (!existing) openAutomationSheet({ id: aid }) // si riapre in modifica: ora ci sono gli indirizzi da copiare
       else onClose()
@@ -242,6 +243,13 @@ function CycleForm({ id, onClose }: { id?: string; onClose: () => void }) {
         <p className="mt-2 text-xs text-muted">{t('L’azione tiene la sua ricorrenza; il ciclo del dispositivo la completa (puoi sempre completarla o annullarla a mano).')}</p>
       </div>
 
+      <label className="label">{t('Quando parte, assegnala a')}</label>
+      <select className="field" value={assignTo} onChange={(e) => setAssignTo(e.target.value)} aria-label={t('Quando parte, assegnala a')}>
+        <option value="">{t('Nessuno (si può assegnare dopo)')}</option>
+        {db.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+      </select>
+      <p className="mt-1 px-1 text-xs text-muted">{t('Senza assegnatario l’azione «in corso» mostra un avviso con «Assegna a me»; chi la prende avrà le stelle a fine ciclo. Se resta senza, si completa senza stelle.')}</p>
+
       <div className="mt-3"><Toggle checked={enabled} onChange={setEnabled} label={t('Automazione attiva')} /></div>
       {err && <p className="mt-3 rounded-xl bg-exp/10 p-3 text-sm text-exp">{err}</p>}
 
@@ -284,7 +292,7 @@ function ShortcutForm({ id, onClose }: { id?: string; onClose: () => void }) {
   const [enabled, setEnabled] = useState(existing?.enabled ?? true)
   const [taskId, setTaskId] = useState(db.tasks.find((x) => !x.archived)?.id ?? '')
   const [action, setAction] = useState('')
-  const [who, setWho] = useState(me?.id ?? db.members[0]?.id ?? '')
+  const [who, setWho] = useState(me?.id ?? db.members[0]?.id ?? '') // vuoto = nessuno: il link non porta `who`
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [copied, setCopied] = useState(false)
@@ -335,8 +343,10 @@ function ShortcutForm({ id, onClose }: { id?: string; onClose: () => void }) {
           </select>
           <label className="label">{t('Per conto di (a lui vanno le stelle)')}</label>
           <select className="field" value={who} onChange={(e) => setWho(e.target.value)} aria-label={t('Per conto di (a lui vanno le stelle)')}>
+            <option value="">{t('Nessuno (si può assegnare dopo)')}</option>
             {db.members.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
           </select>
+          {!who && <p className="mt-1 px-1 text-xs text-muted">{t('Senza membro, completare non dà stelle; un’azione a tempo parte «in corso» senza assegnatario e chi la prende dall’app con «Assegna a me» avrà le stelle.')}</p>}
           <p className="mb-1 mt-3 text-xs font-semibold text-muted">{t('Indirizzo da incollare in Shortcuts')}</p>
           <div className="flex gap-2">
             <input readOnly className="field font-mono !text-[11px]" value={url} onFocus={(e) => e.currentTarget.select()} aria-label={t('Indirizzo da incollare in Shortcuts')} />

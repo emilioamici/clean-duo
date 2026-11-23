@@ -1,5 +1,15 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "«{task}» è tua: a fine corsa le stelle vanno a te.": "“{task}” is yours: you get the stars when it ends.",
+  "Scegli prima chi sei (Impostazioni → Casa e membri).": "First choose who you are (Settings → House and members).",
+  "Nessuno ci sta lavorando: assegnala a te per avere le stelle. Scorri a sinistra per completarla ora.": "Nobody is working on it: assign it to yourself to get the stars. Swipe left to complete it now.",
+  "Assegna a me": "Assign to me",
+  "Assegna «{name}» a me": "Assign “{name}” to me",
+  "Completa ora": "Complete now",
+  "Senza membro, completare non dà stelle; un’azione a tempo parte «in corso» senza assegnatario e chi la prende dall’app con «Assegna a me» avrà le stelle.": "Without a member, completing gives no stars; a timed task starts “running” without an assignee and whoever takes it from the app with “Assign to me” gets the stars.",
+  "Senza assegnatario l’azione «in corso» mostra un avviso con «Assegna a me»; chi la prende avrà le stelle a fine ciclo. Se resta senza, si completa senza stelle.": "Without an assignee the “running” task shows a notice with “Assign to me”; whoever takes it gets the stars when the cycle ends. If nobody does, it completes without stars.",
+  "Nessuno (si può assegnare dopo)": "Nobody (can be assigned later)",
+  "Quando parte, assegnala a": "When it starts, assign it to",
   "Comandi da Shortcuts (iPhone)": "Commands from Shortcuts (iPhone)",
   "Comando «{cmd}» non applicabile a «{name}» in questo momento.": "Command “{cmd}” cannot be applied to “{name}” right now.",
   "Azione non riconosciuta: «{name}»": "Task not recognised: “{name}”",

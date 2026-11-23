@@ -37,9 +37,10 @@ export const timeOfDay = (ts: number): string => new Date(ts).toLocaleTimeString
 export const timerLogId = (taskId: string, until: number): string => `l-run-${taskId}-${until}`
 
 /** Avvia il timer di un'azione (se ha una durata). */
-export function startRunning(task: Task, memberId: string, now = Date.now(), rooms?: string[]): Task {
+/** `memberId` vuoto = nessun assegnatario: a fine tempo l'azione si completa senza stelle, finché qualcuno non se la assegna. */
+export function startRunning(task: Task, memberId: string | undefined, now = Date.now(), rooms?: string[]): Task {
   const min = Math.min(MAX_DURATION_MIN, Math.max(1, task.durationMin ?? 0))
-  return { ...task, runningUntil: now + min * 60_000, runningBy: memberId, runningRooms: rooms && rooms.length > 0 ? rooms : undefined, updatedAt: now }
+  return { ...task, runningUntil: now + min * 60_000, runningBy: memberId || undefined, runningRooms: rooms && rooms.length > 0 ? rooms : undefined, updatedAt: now }
 }
 
 function applyFinish(db: AppDatabase, items: Array<{ task: Task; end: number; early?: boolean }>, now: number): AppDatabase {
@@ -49,14 +50,15 @@ function applyFinish(db: AppDatabase, items: Array<{ task: Task; end: number; ea
   let tasks = db.tasks.map((x) => {
     const it = endOf.get(x.id)
     if (!it) return x
-    const by = x.runningBy && db.members.some((m) => m.id === x.runningBy) ? x.runningBy : db.members[0]?.id
+    // senza assegnatario (avviata da un'automazione e non ancora presa da nessuno) si completa senza stelle
+    const by = x.runningBy && db.members.some((m) => m.id === x.runningBy) ? x.runningBy : undefined
     // lo stesso id anche se si finisce prima: la notifica del server (se arrivasse) ha lo stesso tag e non si duplica
     const id = timerLogId(x.id, x.runningUntil!)
     const rooms = x.runningRooms && x.runningRooms.length > 0 ? x.runningRooms : taskRooms(x)
-    if (by && !logs.some((l) => l.id === id)) {
+    if (!logs.some((l) => l.id === id)) {
       logs.unshift({
-        id, taskId: x.id, taskName: x.name, roomId: rooms[0], ...(taskRooms(x).length > 1 ? { roomIds: rooms } : {}), memberId: by, stars: x.stars, at: it.end, timer: true,
-        ...(it.early ? { early: true } : {}), prev: x.lastCompletedAt, prevTrigger: x.triggeredAt ?? null, prevRoomDone: x.roomDone ?? null,
+        id, taskId: x.id, taskName: x.name, roomId: rooms[0], ...(taskRooms(x).length > 1 ? { roomIds: rooms } : {}), memberId: by ?? '', stars: by ? x.stars : 0, at: it.end, timer: true,
+        ...(by ? {} : { auto: true }), ...(it.early ? { early: true } : {}), prev: x.lastCompletedAt, prevTrigger: x.triggeredAt ?? null, prevRoomDone: x.roomDone ?? null,
       })
     }
     return { ...applyCompletion(x, rooms, it.end, now), runningUntil: null, runningBy: undefined, runningRooms: undefined }
