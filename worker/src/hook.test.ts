@@ -84,3 +84,43 @@ describe('hook: inizio e fine ciclo', () => {
     expect((await t.hook(token, 'start')).status).toBe(404)
   })
 })
+
+describe('comandi da Shortcuts (/do)', () => {
+  const doCall = async (t: Awaited<ReturnType<typeof setup>>, token: string, qs: string, method = 'GET') => {
+    const r = await worker.fetch(new Request(`https://w.example/do/${token}?${qs}`, { method }), t.env)
+    return { status: r.status, json: (await r.json()) as any }
+  }
+
+  it('GET e POST senza Origin; mette in coda il comando con azione, cosa fare e membro', async () => {
+    const t = await setup(); const token = await t.register({ type: 'shortcut' })
+    expect((await doCall(t, token, 'task=Lettiera&do=todo&who=m1')).json.queued).toBe(true)
+    expect((await doCall(t, token, 'task=Piatti', 'POST')).status).toBe(200)
+    const q = JSON.parse(t.kv.get(`ev:${FILE}`)!) as any[]
+    expect(q[0]).toMatchObject({ kind: 'act', task: 'Lettiera', do: 'todo', who: 'm1', ruleId: 'rule-roomba' })
+    expect(q[1]).toMatchObject({ kind: 'act', task: 'Piatti' }); expect(q[1].do).toBeUndefined()
+  })
+
+  it('parametri non validi → 400; codice sbagliato → 404; i due tipi di codice non si scambiano', async () => {
+    const t = await setup(); const sc = await t.register({ type: 'shortcut', ruleId: 'rule-sc' }); const cy = await t.register({ ruleId: 'rule-cy' })
+    expect((await doCall(t, sc, 'do=todo')).status).toBe(400)
+    expect((await doCall(t, sc, 'task=x&do=salta')).status).toBe(400)
+    expect((await doCall(t, 'x'.repeat(30), 'task=x')).status).toBe(404)
+    expect((await doCall(t, cy, 'task=x')).status).toBe(404) // il codice di un ciclo non vale sui comandi
+    expect((await t.hook(sc, 'start')).status).toBe(404) // e viceversa
+  })
+
+  it('un comando uguale entro un minuto è un doppione: non va in coda due volte', async () => {
+    const t = await setup(); const token = await t.register({ type: 'shortcut' })
+    await doCall(t, token, 'task=Lettiera&do=todo&who=m1')
+    expect((await doCall(t, token, 'task=Lettiera&do=todo&who=m1')).json.ignored).toBeTruthy()
+    await doCall(t, token, 'task=Lettiera&do=complete&who=m1') // altro comando: passa
+    expect(JSON.parse(t.kv.get(`ev:${FILE}`)!)).toHaveLength(2)
+  })
+
+  it('i comandi li vedono solo le app con v: 3', async () => {
+    const t = await setup(); const token = await t.register({ type: 'shortcut' })
+    await doCall(t, token, 'task=Lettiera')
+    const ids = async (v?: number) => (await t.post('/automation/events', { fileId: FILE, ...(v ? { v } : {}) })).json.events.length
+    expect(await ids()).toBe(0); expect(await ids(2)).toBe(0); expect(await ids(3)).toBe(1)
+  })
+})

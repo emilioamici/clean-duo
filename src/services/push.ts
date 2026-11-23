@@ -136,10 +136,10 @@ export async function deleteTuyaRule(fileId: string, token: string, ruleId: stri
   await post('/tuya/rule/delete', token, { fileId, ruleId })
 }
 
-export interface ServerEvent { id: string; ruleId: string; at: number; kind?: 'start' | 'finish' }
-/** `v: 2` = questa app sa applicare anche inizio/fine di un ciclo (le versioni vecchie non li ricevono, così non li confermano senza usarli). */
+export interface ServerEvent { id: string; ruleId: string; at: number; kind?: 'start' | 'finish' | 'act'; task?: string; do?: 'todo' | 'complete' | 'start' | 'finish'; who?: string }
+/** `v: 3` = questa app sa applicare anche inizio/fine di un ciclo e i comandi da Shortcuts (le versioni vecchie non li ricevono, così non li confermano senza usarli). */
 export async function pullAutomationEvents(fileId: string, token: string): Promise<ServerEvent[]> {
-  return ((await post('/automation/events', token, { fileId, v: 2 })) as { events?: ServerEvent[] }).events ?? []
+  return ((await post('/automation/events', token, { fileId, v: 3 })) as { events?: ServerEvent[] }).events ?? []
 }
 export async function ackAutomationEvents(fileId: string, token: string, ids: string[]): Promise<void> {
   await post('/automation/ack', token, { fileId, ids })
@@ -147,7 +147,7 @@ export async function ackAutomationEvents(fileId: string, token: string, ids: st
 
 /* ------------------------------------------------------------------ inizio e fine di un ciclo (es. Roomba via IFTTT) */
 
-export interface CycleHookPayload { ruleId: string; recipients: string[]; title: string; body: string; regenerate?: boolean }
+export interface CycleHookPayload { ruleId: string; recipients: string[]; title: string; body: string; regenerate?: boolean; /** `shortcut`: indirizzo per i comandi da Shortcuts invece che per inizio/fine ciclo */ type?: 'shortcut' }
 
 /** Crea (o aggiorna) il collegamento sul server e restituisce il codice segreto dell'indirizzo da chiamare. */
 export async function registerCycleHook(fileId: string, token: string, p: CycleHookPayload): Promise<string> {
@@ -157,6 +157,13 @@ export async function registerCycleHook(fileId: string, token: string, p: CycleH
 }
 export async function deleteCycleHook(fileId: string, token: string, ruleId: string): Promise<void> {
   await post('/hook/delete', token, { fileId, ruleId })
+}
+/** Indirizzo dei comandi da Shortcuts: `…/do/<codice>?task=<id o nome>&do=<todo|complete|start|finish>&who=<id del membro>`. */
+export const shortcutUrl = (hookToken: string, task: string, action: string, who: string): string => {
+  const q = new URLSearchParams({ task })
+  if (action) q.set('do', action)
+  if (who) q.set('who', who)
+  return `${pushUrl()}/do/${hookToken}?${q}`
 }
 /** Indirizzo che il dispositivo (IFTTT, curl…) chiama per segnalare l'inizio o la fine del ciclo. */
 export const cycleHookUrl = (hookToken: string, kind: 'start' | 'finish'): string => `${pushUrl()}/hook/${hookToken}/${kind}`

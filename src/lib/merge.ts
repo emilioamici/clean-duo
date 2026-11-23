@@ -28,7 +28,7 @@ function mergeList<T extends Versioned>(
  * Per le azioni vince la modifica più recente (anche per un completamento annullato). Il completamento che non fosse
  * presente nella copia più recente (due persone completano offline) lo si recupera dallo storico: vedi `reconcileWithLogs`.
  */
-const combineTask = (newer: Task): Task => newer
+const combineTask = (newer: Task, older: Task): Task => (older.lastCommandAt && older.lastCommandAt > (newer.lastCommandAt ?? 0) ? { ...newer, lastCommandAt: older.lastCommandAt } : newer)
 
 /**
  * Se nello storico c'è un completamento più recente di quello registrato nell'azione, l'azione lo recepisce

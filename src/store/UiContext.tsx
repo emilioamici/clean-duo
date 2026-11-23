@@ -18,8 +18,8 @@ interface UiCtx {
   openRoomSheet: (s: { id?: string } | null) => void
   memberSheet: { id?: string } | null
   openMemberSheet: (s: { id?: string } | null) => void
-  automationSheet: { id?: string; kind?: 'cycle' } | null
-  openAutomationSheet: (s: { id?: string; kind?: 'cycle' } | null) => void
+  automationSheet: { id?: string; kind?: 'cycle' | 'shortcut' } | null
+  openAutomationSheet: (s: { id?: string; kind?: 'cycle' | 'shortcut' } | null) => void
   switcherOpen: boolean
   openSwitcher: (o: boolean) => void
   celebration: CelebrationState
@@ -42,7 +42,7 @@ export function UiProvider({ children }: { children: ReactNode }) {
   const [tab, setTabState] = useState<TabId>('today')
   const [roomId, setRoomId] = useState<string | null>(null)
   const [taskSheet, openTaskSheet] = useState<TaskSheetState>(null)
-  const [roomSheet, openRoomSheet] = useState<{ id?: string; kind?: 'cycle' } | null>(null)
+  const [roomSheet, openRoomSheet] = useState<{ id?: string; kind?: 'cycle' | 'shortcut' } | null>(null)
   const [memberSheet, openMemberSheet] = useState<{ id?: string } | null>(null)
   const [automationSheet, openAutomationSheet] = useState<{ id?: string } | null>(null)
   const [switcherOpen, openSwitcher] = useState(false)

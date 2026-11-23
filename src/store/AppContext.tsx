@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AppDatabase, Automation, Member, Room, Settings, Task } from '../types'
-import { applyAutomationEvents } from '../lib/automations'
+import { applyAutomationEvents, completeBy } from '../lib/automations'
 import { applyTheme, getTheme, setTheme as setStoredTheme, type Theme } from '../lib/theme'
 import { createDemoDb, createEmptyDb } from '../lib/demo'
 import { uid } from '../lib/clean'
@@ -12,7 +12,7 @@ import { enqueue, flushQueue, type QueuedPush, type SendResult } from '../servic
 import { diffNotifications, mergeNotifications, pushTargets, type Notif } from '../lib/notifications'
 import { DEFAULT_REMINDER_TIME, buildReminders, buildTodoNotices, dueNow, reminderText, validTime } from '../lib/reminders'
 import { t } from '../i18n'
-import { finalizeTimers, finishEarly, isAutoStale, startRunning, timerLogId } from '../lib/timers'
+import { finalizeTimers, finishEarly, isAutoStale, isRunning, startRunning, timerLogId } from '../lib/timers'
 import { isOnDemand, triggerDependents, unlinkMissing } from '../lib/deps'
 import { applyCompletion, removeRoom, setRooms, taskRooms } from '../lib/rooms'
 import { undoCompletion } from '../lib/history'
@@ -127,6 +127,8 @@ interface Ctx {
   completeTask: (taskId: string, memberId: string, roomIds?: string[]) => number
   /** Annulla un completamento dalla cronologia: le stelle si tolgono e l'azione torna da fare. */
   deleteLog: (logId: string) => void
+  /** Un'azione «in corso» senza assegnatario (avviata da un'automazione) la prende chi preme: a lui vanno le stelle a fine corsa. */
+  assignRunning: (taskId: string) => void
   /** «Su richiesta»: la segna «da fare», così compare tra le cose da fare. */
   markTodo: (taskId: string) => void
   /** Avvia l'azione con durata: resta «in corso» e si completa da sola alla fine. Ritorna l'ora di fine (ms). */
@@ -477,7 +479,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const room = (x.runningRooms?.length ? x.runningRooms : taskRooms(x)).map((rid) => cur.rooms.find((r) => r.id === rid)?.name).filter(Boolean).join(', ')
       void scheduleTimer(fid, tk, {
         id, at: x.runningUntil, recipients: emails, tag: `done:${timerLogId(x.id, x.runningUntil)}`,
-        title: t('Il task «{task}» è finito', { task: x.name }), body: [room, `+${x.stars} ⭐`].filter(Boolean).join(' · '),
+        title: t('Il task «{task}» è finito', { task: x.name }), body: [room, x.runningBy ? `+${x.stars} ⭐` : ''].filter(Boolean).join(' · '),
       }).catch(() => scheduledTimers.current.delete(id))
     }
   }, [runningSig, meta.mode, meta.fileId, status])
@@ -544,7 +546,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const finishTimer: Ctx['finishTimer'] = (taskId) => {
     const task = dbRef.current.tasks.find((x) => x.id === taskId)
     // «in corso» per il segnale di un dispositivo: «Completa ora» è un completamento di chi preme (le stelle vanno a lui)
-    if (task?.autoRunSince && !task.runningUntil) { const who = meRef.current; return who ? completeTask(taskId, who.id) : 0 }
+    if (task?.autoRunSince && !task.runningUntil) {
+      const holder = task.runningBy && dbRef.current.members.some((m) => m.id === task.runningBy) ? task.runningBy : null
+      const at = Date.now()
+      mutate((d) => completeBy(d, task, holder, `l-man-${task.id}-${at}`, at, at))
+      return holder ? task.stars : 0
+    }
     if (!task?.runningUntil) return 0
     const prev = dbRef.current
     cancelServerTimer(taskId, task.runningUntil) // la notifica la mandiamo subito noi: quella programmata non deve arrivare dopo
@@ -580,6 +587,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }, ...d.logs].slice(0, 2000),
     }))
     return task.stars
+  }
+
+  const assignRunning: Ctx['assignRunning'] = (taskId) => {
+    const who = meRef.current
+    if (!who) { notify(t('Scegli prima chi sei (Impostazioni → Casa e membri).')); return }
+    mutate((d) => ({ ...d, tasks: d.tasks.map((x) => (x.id === taskId && isRunning(x) && !x.runningBy ? { ...x, runningBy: who.id, updatedAt: Date.now() } : x)) }))
+    notify(t('«{task}» è tua: a fine corsa le stelle vanno a te.', { task: dbRef.current.tasks.find((x) => x.id === taskId)?.name ?? '' }))
   }
 
   const markTodo: Ctx['markTodo'] = (taskId) => mutate((d) => {
@@ -735,14 +749,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const full: Automation = { ...a, updatedAt: Date.now() }
     const tk = drive.currentToken()
     const fid = metaRef.current.fileId
-    if (a.kind === 'cycle') {
+    if (a.kind === 'cycle' || a.kind === 'shortcut') {
       // inizio/fine ciclo: l'azione collegata resta com'è (con la sua ricorrenza); il dispositivo la mette «in corso» e la completa
       mutate((d) => ({ ...d, automations: [...(d.automations ?? []).filter((x) => x.id !== a.id), full] }))
       try {
         if (!tk || !fid || !pushConfigured()) throw new Error(t('Per collegare un dispositivo serve una casa su Drive, il server delle notifiche e l\'accesso a Google attivo.'))
         if (a.enabled) {
           const task = dbRef.current.tasks.find((x) => x.id === a.taskId)
-          const token = await registerCycleHook(fid, tk, { ruleId: a.id, recipients: houseEmails(), title: t('«{task}» è finita', { task: task?.name ?? a.name }), body: a.name })
+          const token = await registerCycleHook(fid, tk, { ruleId: a.id, recipients: a.kind === 'cycle' ? houseEmails() : [], title: t('«{task}» è finita', { task: task?.name ?? a.name }), body: a.name, ...(a.kind === 'shortcut' ? { type: 'shortcut' as const } : {}) })
           if (token !== a.hookToken) mutate((d) => ({ ...d, automations: (d.automations ?? []).map((x) => (x.id === a.id ? { ...x, hookToken: token, updatedAt: Date.now() } : x)) }))
         } else await deleteCycleHook(fid, tk, a.id)
         return null
@@ -764,7 +778,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const deleteAutomation: Ctx['deleteAutomation'] = async (id) => {
     const tk = drive.currentToken()
     const fid = metaRef.current.fileId
-    const cycle = (dbRef.current.automations ?? []).find((x) => x.id === id)?.kind === 'cycle'
+    const cycle = (dbRef.current.automations ?? []).find((x) => x.id === id)?.kind !== 'tuya'
     if (tk && fid && pushConfigured()) await (cycle ? deleteCycleHook(fid, tk, id) : deleteTuyaRule(fid, tk, id)).catch(() => undefined)
     mutate((d) => ({
       ...d,
@@ -783,7 +797,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       const events = await pullAutomationEvents(fid, tk)
       if (events.length === 0) return
+      const before = dbRef.current.tasks.filter((x) => x.runningUntil)
       mutate((d) => applyAutomationEvents(d, events))
+      // un comando può aver finito un timer: la notifica di fine programmata sul server non deve più arrivare
+      for (const x of before) if (!dbRef.current.tasks.find((y) => y.id === x.id)?.runningUntil) cancelServerTimer(x.id, x.runningUntil!)
       await ackAutomationEvents(fid, tk, events.map((e) => e.id))
     } catch { /* si riprova al prossimo ciclo */ } finally { pulling.current = false; lastPull.current = Date.now() }
   }
@@ -854,7 +871,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, config, setConfig, theme, setTheme, meId, me, setMeId, toast, notify,
     persistent, prefs, setPrefs, notifications, unread, markRead, markAllRead, clearNotifications, toastNotif, dismissToastNotif, centerOpen, setCenterOpen,
     enableNotifications, disableNotifications, sendTestPush,
-    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, markTodo, deleteLog, saveAutomation, deleteAutomation, pullEvents, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
+    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, markTodo, assignRunning, deleteLog, saveAutomation, deleteAutomation, pullEvents, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
     demoSkipped, setDemoSkipped, offlineSkipped, setOfflineSkipped,
     syncNow, connect, reconnect, createHouse, joinHouse, shareWith, disconnect, resetDemo,
   }
