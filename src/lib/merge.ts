@@ -67,7 +67,12 @@ function reconcileWithLogs(tasks: Task[], logs: ActivityLog[]): Task[] {
 
 function mergeLogs(a: ActivityLog[], b: ActivityLog[], tombstones: Record<string, number>): ActivityLog[] {
   const map = new Map<string, ActivityLog>()
-  for (const l of [...a, ...b]) if (!tombstones[l.id]) map.set(l.id, l)
+  for (const l of [...a, ...b]) {
+    if (tombstones[l.id]) continue
+    const cur = map.get(l.id)
+    // un completamento si può modificare (contributori): vince l'ultima modifica, non l'ultima copia letta
+    if (!cur || (l.updatedAt ?? 0) >= (cur.updatedAt ?? 0)) map.set(l.id, l)
+  }
   const sorted = [...map.values()].sort((x, y) => x.at - y.at || x.id.localeCompare(y.id))
   // Anti-doppione: stessa task completata "contemporaneamente" da due persone -> vale solo la prima.
   const out: ActivityLog[] = []

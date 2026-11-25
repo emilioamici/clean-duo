@@ -475,3 +475,28 @@ describe('«su richiesta»: segna da fare', () => {
     expect(nextDue(untodo)).toBeNull()
   })
 })
+
+describe('contributori di un completamento', () => {
+  it('le stelle si dividono in parti uguali tra chi ha completato e chi ha dato una mano', async () => {
+    const { starShares, starsSince, weeklySeries } = await import('./stats')
+    const db = createDemoDb()
+    const at = Date.now() - 1000
+    const log = { id: 'lx', taskId: 't1', taskName: 'x', roomId: 'r1', memberId: 'm1', stars: 3, at, with: ['m2', 'm2', 'm1', ''] }
+    expect(starShares(log)).toEqual([['m1', 1.5], ['m2', 1.5]]) // doppioni, il completatore e id vuoti non contano
+    expect(starShares({ ...log, with: undefined })).toEqual([['m1', 3]])
+    expect(starShares({ ...log, memberId: '' })).toEqual([]) // completamento automatico senza membro
+    const s = starsSince([log, { ...log, id: 'ly', stars: 1, with: ['m2', 'm3'] }], at - 10)
+    expect(s).toEqual({ m1: 1.8, m2: 1.8, m3: 0.3 }) // 1.5 + 0.333 arrotondato a un decimale
+    const wk = weeklySeries({ ...db, logs: [log] }, 1)[0].per
+    expect(wk).toEqual({ m1: 1.5, m2: 1.5 })
+  })
+
+  it('nel merge un completamento modificato vince sulla copia vecchia, qualunque sia l\'ordine', () => {
+    const db = createDemoDb()
+    const old = { ...db.logs[0] }
+    const edited = { ...old, with: ['m2'], updatedAt: Date.now() }
+    const a = mergeDb({ ...db, logs: [edited] }, { ...db, logs: [old] })
+    const b = mergeDb({ ...db, logs: [old] }, { ...db, logs: [edited] })
+    for (const m of [a, b]) expect(m.logs.find((l) => l.id === old.id)!.with).toEqual(['m2'])
+  })
+})

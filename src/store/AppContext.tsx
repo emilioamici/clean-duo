@@ -129,6 +129,8 @@ interface Ctx {
   deleteLog: (logId: string) => void
   /** Un'azione «in corso» senza assegnatario (avviata da un'automazione) la prende chi preme: a lui vanno le stelle a fine corsa. */
   assignRunning: (taskId: string) => void
+  /** Indica chi, oltre a chi ha completato, ha contribuito: le stelle si dividono in parti uguali. */
+  setLogContributors: (logId: string, memberIds: string[]) => void
   /** «Su richiesta»: la segna «da fare», così compare tra le cose da fare. */
   markTodo: (taskId: string) => void
   /** «Su richiesta»: la toglie dalle cose da fare. */
@@ -608,6 +610,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return { ...d, tasks: d.tasks.map((x) => (x.id === taskId && isOnDemand(x) ? { ...x, todoAt: null, updatedAt: now } : x)) }
   })
 
+  const setLogContributors: Ctx['setLogContributors'] = (logId, ids) => mutate((d) => ({
+    ...d,
+    logs: d.logs.map((l) => {
+      if (l.id !== logId) return l
+      const others = [...new Set(ids.filter((id) => id !== l.memberId && d.members.some((m) => m.id === id)))]
+      return { ...l, with: others.length ? others : undefined, updatedAt: Date.now() }
+    }),
+  }))
+
   const deleteLog: Ctx['deleteLog'] = (logId) => mutate((d) => undoCompletion(d, logId))
 
   const upsertMember: Ctx['upsertMember'] = (m) => {
@@ -878,7 +889,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user, config, setConfig, theme, setTheme, meId, me, setMeId, toast, notify,
     persistent, prefs, setPrefs, notifications, unread, markRead, markAllRead, clearNotifications, toastNotif, dismissToastNotif, centerOpen, setCenterOpen,
     enableNotifications, disableNotifications, sendTestPush,
-    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, markTodo, unmarkTodo, assignRunning, deleteLog, saveAutomation, deleteAutomation, pullEvents, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
+    upsertRoom, deleteRoom, upsertTask, deleteTask, completeTask, markTodo, unmarkTodo, assignRunning, setLogContributors, deleteLog, saveAutomation, deleteAutomation, pullEvents, startTimer, cancelTimer: cancelTimerFn, finishTimer, upsertMember, deleteMember, updateSettings,
     demoSkipped, setDemoSkipped, offlineSkipped, setOfflineSkipped,
     syncNow, connect, reconnect, createHouse, joinHouse, shareWith, disconnect, resetDemo,
   }
