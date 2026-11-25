@@ -99,6 +99,10 @@ export interface ActivityLog {
   timer?: boolean
   /** completata prima della fine della durata, con «Completa ora» */
   early?: boolean
+  /** Altri membri che hanno dato una mano: le stelle si dividono in parti uguali tra chi ha completato e questi */
+  with?: string[]
+  /** Ultima modifica dei contributori (nel merge vince la più recente) */
+  updatedAt?: number
   /** completata dal segnale di un dispositivo (es. fine del ciclo del Roomba): nessun membro, nessuna stella */
   auto?: boolean
   /** stato dell'azione prima di questo completamento (per poterlo annullare esattamente) */

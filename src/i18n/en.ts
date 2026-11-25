@@ -1,5 +1,14 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "Chi ha contribuito?": "Who contributed?",
+  "con {names}": "with {names}",
+  "Chi ha contribuito a «{task}»?": "Who contributed to “{task}”?",
+  "Salva": "Save",
+  "Ognuno prende {n} ⭐ ({count} persone).": "Each gets {n} ⭐ ({count} people).",
+  "Le stelle vanno tutte a {who}.": "All the stars go to {who}.",
+  "Non ci sono altri membri.": "There are no other members.",
+  "{who} ha completato «{task}». Seleziona chi ha dato una mano: le stelle ({n} ⭐) si dividono in parti uguali.": "{who} completed “{task}”. Select who lent a hand: the stars ({n} ⭐) are split equally.",
+  "Ultima volta il {date}": "Last completed on {date}",
   "{n} azioni in corso": "{n} tasks running",
   "1 azione in corso": "1 task running",
   "Casa": "Home",

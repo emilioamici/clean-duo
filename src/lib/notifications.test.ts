@@ -475,3 +475,44 @@ describe('«su richiesta»: segna da fare', () => {
     expect(nextDue(untodo)).toBeNull()
   })
 })
+
+describe('contributori di un completamento', () => {
+  it('le stelle si dividono in parti uguali tra chi ha completato e chi ha dato una mano', async () => {
+    const { starShares, starsSince, weeklySeries } = await import('./stats')
+    const db = createDemoDb()
+    const at = Date.now() - 1000
+    const log = { id: 'lx', taskId: 't1', taskName: 'x', roomId: 'r1', memberId: 'm1', stars: 3, at, with: ['m2', 'm2', 'm1', ''] }
+    expect(starShares(log)).toEqual([['m1', 1.5], ['m2', 1.5]]) // doppioni, il completatore e id vuoti non contano
+    expect(starShares({ ...log, with: undefined })).toEqual([['m1', 3]])
+    expect(starShares({ ...log, memberId: '' })).toEqual([]) // completamento automatico senza membro
+    const s = starsSince([log, { ...log, id: 'ly', stars: 1, with: ['m2', 'm3'] }], at - 10)
+    expect(s).toEqual({ m1: 1.8, m2: 1.8, m3: 0.3 }) // 1.5 + 0.333 arrotondato a un decimale
+    const wk = weeklySeries({ ...db, logs: [log] }, 1)[0].per
+    expect(wk).toEqual({ m1: 1.5, m2: 1.5 })
+  })
+
+  it('nel merge un completamento modificato vince sulla copia vecchia, qualunque sia l\'ordine', () => {
+    const db = createDemoDb()
+    const old = { ...db.logs[0] }
+    const edited = { ...old, with: ['m2'], updatedAt: Date.now() }
+    const a = mergeDb({ ...db, logs: [edited] }, { ...db, logs: [old] })
+    const b = mergeDb({ ...db, logs: [old] }, { ...db, logs: [edited] })
+    for (const m of [a, b]) expect(m.logs.find((l) => l.id === old.id)!.with).toEqual(['m2'])
+  })
+})
+
+describe('etichetta delle azioni su richiesta già fatte', () => {
+  it('dice quando è stata fatta l\'ultima volta, con l\'anno solo se diverso da quello in corso', async () => {
+    const { dueLabel, lastDoneLabel } = await import('./clean')
+    const db = createDemoDb()
+    const now = new Date(2026, 10, 25, 12).getTime()
+    const task = { ...db.tasks[0], recurrence: { type: 'once' as const, every: 1 }, lastCompletedAt: new Date(2026, 10, 20, 9).getTime(), todoAt: null, roomDone: undefined, roomIds: undefined }
+    const label = dueLabel(task, now)
+    expect(label).toContain(lastDoneLabel(task.lastCompletedAt, now))
+    expect(label).not.toBe('Completata')
+    expect(lastDoneLabel(new Date(2025, 10, 20).getTime(), now)).toContain('2025')
+    expect(lastDoneLabel(task.lastCompletedAt, now)).not.toContain('2026')
+    // mai fatta: resta «Su richiesta»... ma prima del primo completamento è da fare (scadenza = creazione), quindi non arriva qui
+    expect(dueLabel({ ...task, lastCompletedAt: null }, now)).not.toContain('Ultima volta')
+  })
+})

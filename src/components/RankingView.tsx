@@ -1,21 +1,57 @@
-import { BarChart3, Crown, Gift, History, Star, Target, Undo2, Zap } from 'lucide-react'
+import { BarChart3, Check, Crown, Gift, History, Star, Target, Undo2, Zap } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { DAY } from '../lib/clean'
-import { monthStart, starsSince, timeAgo, weekStart, weeklySeries } from '../lib/stats'
+import { monthStart, round1, starShares, starsSince, timeAgo, weekStart, weeklySeries } from '../lib/stats'
+import type { ActivityLog } from '../types'
 import { locale, t } from '../i18n'
 import { useApp } from '../store/AppContext'
 import { MeChip, NotificationBell, SyncPill } from './Chrome'
 import { MascotPeek } from './Mascots'
 import { RoomIcon } from './icons'
-import { Accordion, Avatar, CleanBar, PageHeader, Segmented } from './ui'
+import { Accordion, Avatar, CleanBar, PageHeader, Segmented, Sheet } from './ui'
 
 type Period = 'week' | 'month'
 type Section = 'goal' | 'weeks' | 'history'
 const OPEN_KEY = 'cleanduo:rankingOpen'
 const loadOpen = (): Partial<Record<Section, boolean>> => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{"goal":true}') } catch { return {} } }
 
+/** Chi ha dato una mano a un completamento: le stelle si dividono in parti uguali tra chi l'ha fatto e gli altri selezionati. */
+function ContributorsForm({ log, onClose }: { log: ActivityLog; onClose: () => void }) {
+  const { db, setLogContributors } = useApp()
+  const who = db.members.find((m) => m.id === log.memberId)
+  const others = db.members.filter((m) => m.id !== log.memberId)
+  const [picked, setPicked] = useState<string[]>((log.with ?? []).filter((id) => others.some((m) => m.id === id)))
+  const each = round1(log.stars / (1 + picked.length))
+  const toggle = (id: string) => setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))
+  return (
+    <div>
+      <p className="text-sm text-muted">{t('{who} ha completato «{task}». Seleziona chi ha dato una mano: le stelle ({n} ⭐) si dividono in parti uguali.', { who: who?.name ?? t('Ex membro'), task: log.taskName, n: log.stars })}</p>
+      <ul className="mt-3 space-y-2">
+        {others.map((m) => {
+          const on = picked.includes(m.id)
+          return (
+            <li key={m.id}>
+              <button type="button" role="checkbox" aria-checked={on} onClick={() => toggle(m.id)}
+                className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition active:scale-[0.99] ${on ? 'border-brand bg-brand/10' : 'border-line bg-bg/60'}`}>
+                <Avatar member={m} size={32} /><span className="flex-1 font-semibold">{m.name}</span>
+                {on && <Check size={18} className="text-brand" strokeWidth={3} />}
+              </button>
+            </li>
+          )
+        })}
+        {others.length === 0 && <li className="text-sm text-muted">{t('Non ci sono altri membri.')}</li>}
+      </ul>
+      <p className="mt-3 rounded-xl bg-brand/10 p-3 text-sm font-semibold text-brand">
+        {picked.length === 0 ? t('Le stelle vanno tutte a {who}.', { who: who?.name ?? t('Ex membro') }) : t('Ognuno prende {n} ⭐ ({count} persone).', { n: each, count: 1 + picked.length })}
+      </p>
+      <button type="button" className="glass-btn btn-primary mt-4 w-full !py-3.5" onClick={() => { setLogContributors(log.id, picked); onClose() }}>{t('Salva')}</button>
+    </div>
+  )
+}
+
 export function RankingView() {
   const { db, deleteLog } = useApp()
+  const [editLog, setEditLog] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>('week')
   const [open, setOpen] = useState(loadOpen)
   const flip = (k: Section) => setOpen((o) => { const n = { ...o, [k]: !o[k] }; try { localStorage.setItem(OPEN_KEY, JSON.stringify(n)) } catch { /* noop */ } return n })
@@ -28,7 +64,7 @@ export function RankingView() {
   const max = Math.max(1, ...ranked.map((m) => stars[m.id] ?? 0))
 
   const goal = db.settings.weeklyGoal || 1
-  const teamTotal = db.members.reduce((s, m) => s + (weekStars[m.id] ?? 0), 0)
+  const teamTotal = round1(db.members.reduce((s, m) => s + (weekStars[m.id] ?? 0), 0))
   const teamGoal = goal * Math.max(1, db.members.length)
 
   const monthLeader = [...db.members].sort((a, b) => (monthStars[b.id] ?? 0) - (monthStars[a.id] ?? 0))[0]
@@ -139,12 +175,14 @@ export function RankingView() {
                 const r = logRooms[0]
                 return (
                   <div key={l.id} className="flex items-center gap-3 px-4 py-3">
-                    {l.auto ? <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand"><Zap size={16} /></span> : <Avatar member={m} size={34} />}
+                    {l.auto ? <span className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-brand"><Zap size={16} /></span> : <button type="button" className="shrink-0" onClick={() => setEditLog(l.id)} aria-label={t('Chi ha contribuito a «{task}»?', { task: l.taskName })}><Avatar member={m} size={34} /></button>}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm">{l.auto ? t('{task} completata in automatico', { task: l.taskName }) : t('{who} ha completato {task}', { who: m?.name ?? t('Ex membro'), task: l.taskName })}</p>
-                      <p className="flex items-center gap-1 text-xs text-muted">{r && <RoomIcon name={r.icon} size={11} />}{logRooms.length ? logRooms.map((x) => x.name).join(', ') : t('Stanza rimossa')} · {timeAgo(l.at)}</p>
+                      {l.auto || !l.memberId ? <p className="truncate text-sm">{l.auto ? t('{task} completata in automatico', { task: l.taskName }) : t('{who} ha completato {task}', { who: m?.name ?? t('Ex membro'), task: l.taskName })}</p>
+                        : <button type="button" className="block w-full truncate text-left text-sm" onClick={() => setEditLog(l.id)} aria-label={t('Chi ha contribuito a «{task}»?', { task: l.taskName })}>{t('{who} ha completato {task}', { who: m?.name ?? t('Ex membro'), task: l.taskName })}</button>}
+                      <p className="flex items-center gap-1 text-xs text-muted">{r && <RoomIcon name={r.icon} size={11} />}{logRooms.length ? logRooms.map((x) => x.name).join(', ') : t('Stanza rimossa')} · {timeAgo(l.at)}
+                        {l.with && l.with.length > 0 && <span className="truncate">· {t('con {names}', { names: l.with.map((id) => db.members.find((x) => x.id === id)?.name).filter(Boolean).join(', ') })}</span>}</p>
                     </div>
-                    {!l.auto && <span className="flex shrink-0 items-center gap-0.5 text-sm font-bold">+{l.stars}<Star size={13} className="fill-brand text-brand" /></span>}
+                    {!l.auto && <span className="flex shrink-0 items-center gap-0.5 text-sm font-bold">+{round1(starShares(l)[0]?.[1] ?? l.stars)}<Star size={13} className="fill-brand text-brand" /></span>}
                     <button className="glass-btn !p-2 text-muted" aria-label={t('Annulla il completamento di {task}', { task: l.taskName })}
                       onClick={() => { if (window.confirm(t('Annullare il completamento di «{task}»? Le stelle si tolgono e l’azione torna da fare.', { task: l.taskName }))) deleteLog(l.id) }}>
                       <Undo2 size={15} />
@@ -157,6 +195,9 @@ export function RankingView() {
           </Accordion>
         </div>
       </div>
+      <Sheet open={!!editLog} onClose={() => setEditLog(null)} title={t('Chi ha contribuito?')}>
+        {(() => { const log = db.logs.find((x) => x.id === editLog); return log ? <ContributorsForm key={log.id} log={log} onClose={() => setEditLog(null)} /> : null })()}
+      </Sheet>
     </div>
   )
 }
