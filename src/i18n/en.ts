@@ -1,5 +1,6 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "Ultima volta il {date}": "Last completed on {date}",
   "{n} azioni in corso": "{n} tasks running",
   "1 azione in corso": "1 task running",
   "Casa": "Home",
