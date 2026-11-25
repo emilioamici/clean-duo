@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
-import { Star } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { ChevronDown, Star } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { nextDue, urgencyOf } from '../lib/clean'
 import { starsSince, weekStart } from '../lib/stats'
 import { isRunning } from '../lib/timers'
@@ -12,9 +12,11 @@ import { Fab, MeChip, NotificationBell, SyncPill } from './Chrome'
 import { MascotImg, MascotPeek } from './Mascots'
 import { RoomIcon } from './icons'
 import { TaskRow } from './TaskRow'
+import type { Task } from '../types'
 import { CleanBar, PageHeader, Segmented } from './ui'
 
-type Filter = 'todo' | 'running' | 'next' | 'all'
+type Filter = 'todo' | 'next' | 'all'
+const RUNNING_OPEN_KEY = 'cleanduo:runningOpen'
 
 function GoalCard({ todoCount, overdueCount, runningCount, myStars, goal, pct }: {
   todoCount: number
@@ -48,6 +50,33 @@ function GoalCard({ todoCount, overdueCount, runningCount, myStars, goal, pct }:
   )
 }
 
+/**
+ * Le azioni in corso, in una scheda che si apre e si chiude in cima alla pagina (compare solo se ce ne sono).
+ * Il gattino con la scopa spazza mentre c'è qualcosa in corso.
+ */
+function RunningPanel({ tasks }: { tasks: Task[] }) {
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(RUNNING_OPEN_KEY) !== 'false' } catch { return true } })
+  const flip = () => setOpen((o) => { try { localStorage.setItem(RUNNING_OPEN_KEY, String(!o)) } catch { /* noop */ } return !o })
+  const title = tasks.length === 1 ? t('1 azione in corso') : t('{n} azioni in corso', { n: tasks.length })
+  return (
+    <div className="relative pt-11" data-testid="running-panel">
+      <span className="cat-bob absolute left-6 top-0 block"><MascotImg kind="zenitsu" className="h-16 w-auto" /></span>
+      {/* la scopa oscilla con il manico come perno, sul bordo della scheda */}
+      <span className="broom-sweep pointer-events-none absolute left-[5.4rem] top-0 z-10 block"><MascotImg kind="broom" className="h-[2.9rem] w-auto" /></span>
+      <section className="card relative overflow-hidden">
+        <button type="button" onClick={flip} aria-expanded={open} className="flex w-full items-center gap-3 p-4 text-left active:bg-line/30">
+          <span className="min-w-0 flex-1">
+            <span className="block text-lg font-extrabold leading-tight">{title}</span>
+            {!open && <span className="block truncate text-xs text-muted">{tasks.map((x) => x.name).join(' · ')}</span>}
+          </span>
+          <ChevronDown size={20} className={`shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+        </button>
+        {open && <div className="space-y-3 border-t border-line/60 p-3">{tasks.map((x) => <TaskRow key={x.id} task={x} />)}</div>}
+      </section>
+    </div>
+  )
+}
+
 export function TodayView() {
   const { db, me } = useApp()
   const { openTaskSheet } = useUi()
@@ -59,20 +88,18 @@ export function TodayView() {
   const runningCount = active.filter(isRunning).length
   const todoCount = active.filter((x) => ['overdue', 'today'].includes(urgencyOf(x)) && !isRunning(x)).length
   const overdueCount = active.filter((x) => urgencyOf(x) === 'overdue' && !isRunning(x)).length
-  // la scheda «In corso» c'è solo se ci sono azioni in corso; quando l'ultima finisce si torna a «Da fare»
-  useEffect(() => { if (filter === 'running' && runningCount === 0) setFilter('todo') }, [filter, runningCount])
+  const runningTasks = useMemo(() => active.filter(isRunning), [active])
 
   const list = useMemo(() => {
     return active
       .filter((x) => room === 'all' || inRoom(x, room))
       .filter((x) => {
         const u = urgencyOf(x)
+        if (isRunning(x)) return false // stanno nella scheda «in corso» in cima
         if (filter === 'all') return true
-        if (filter === 'running') return isRunning(x)
-        if (isRunning(x)) return false
         return filter === 'todo' ? u === 'overdue' || u === 'today' : u === 'soon' || u === 'later'
       })
-      .sort((a, b) => Number(isRunning(b)) - Number(isRunning(a)) || (nextDue(a) ?? 8.64e15) - (nextDue(b) ?? 8.64e15) || b.stars - a.stars)
+      .sort((a, b) => (nextDue(a) ?? 8.64e15) - (nextDue(b) ?? 8.64e15) || b.stars - a.stars)
   }, [active, filter, room])
 
   const myStars = me ? starsSince(db.logs, weekStart())[me.id] ?? 0 : 0
@@ -102,13 +129,14 @@ export function TodayView() {
             </MascotPeek>
           </div>
 
+          {runningTasks.length > 0 && <RunningPanel tasks={runningTasks} />}
+
           <div>
             <Segmented<Filter>
               value={filter}
               onChange={setFilter}
               options={[
                 { id: 'todo', label: t('Da fare') },
-                ...(runningCount > 0 ? [{ id: 'running' as const, label: t('In corso ({n})', { n: runningCount }) }] : []),
                 { id: 'next', label: t('Prossime') },
                 { id: 'all', label: t('Tutte') },
               ]}
