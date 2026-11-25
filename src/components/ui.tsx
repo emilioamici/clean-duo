@@ -1,6 +1,6 @@
 import { AnimatePresence, motion, useDragControls } from 'framer-motion'
 import { ChevronDown, Star, X } from 'lucide-react'
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useState, type CSSProperties, type ReactNode } from 'react'
 import type { Member } from '../types'
 import { cleanColor } from '../lib/clean'
 import { t } from '../i18n'
@@ -73,8 +73,27 @@ export function PageHeader({ title, subtitle, right, left }: { title: string; su
   )
 }
 
+/**
+ * Area davvero visibile quando la tastiera è aperta. Su iPhone la tastiera non ridimensiona la pagina: un pannello fissato in basso
+ * ci finisce dietro (e con lui il campo che si sta scrivendo). Qui si ricava lo spazio sopra la tastiera dal `visualViewport`;
+ * `null` = tastiera chiusa o non rilevabile (si resta a tutto schermo).
+ */
+function useKeyboardArea(active: boolean): CSSProperties | null {
+  const [area, setArea] = useState<CSSProperties | null>(null)
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null
+    if (!active || !vv) return
+    const update = () => setArea(window.innerHeight - vv.height > 80 ? { top: vv.offsetTop, height: vv.height, bottom: 'auto' } : null)
+    update()
+    vv.addEventListener('resize', update); vv.addEventListener('scroll', update)
+    return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); setArea(null) }
+  }, [active])
+  return area
+}
+
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   const controls = useDragControls()
+  const keyboard = useKeyboardArea(open)
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
@@ -85,7 +104,7 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
   return (
     <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4">
+        <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4" style={keyboard ?? undefined}>
           <motion.div className="absolute inset-0 bg-ink/30 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
           <motion.div
             className="glass-strong relative z-10 flex max-h-[92%] w-full max-w-md md:max-w-xl flex-col rounded-t-3xl rounded-b-none md:rounded-3xl shadow-2xl"
@@ -99,7 +118,9 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
               <h2 className="text-xl font-bold">{title}</h2>
               <button onClick={onClose} className="glass-btn !p-2" aria-label={t('Chiudi')}><X size={18} /></button>
             </div>
-            <div className="overflow-y-auto px-5 pb-8 pt-1 pb-safe">{children}</div>
+            <div className="overflow-y-auto px-5 pb-8 pt-1 pb-safe"
+              // il campo che si sta scrivendo resta in vista quando la tastiera si apre (si aspetta la fine della sua animazione)
+              onFocusCapture={(e) => { const el = e.target as HTMLElement; if (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)) window.setTimeout(() => el.scrollIntoView?.({ block: 'center', behavior: 'smooth' }), 320) }}>{children}</div>
           </motion.div>
         </div>
       )}
