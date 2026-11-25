@@ -42,7 +42,7 @@ export default function App() {
           <main className="relative flex-1 h-full min-w-0 overflow-hidden md:rounded-[2.5rem] md:border md:border-line md:shadow-[0_20px_60px_-15px_rgb(var(--glass-shade))] bg-surface/30 md:backdrop-blur-sm">
             <div
               ref={scroller}
-              className="h-full overflow-y-auto overscroll-contain px-4 md:px-8 pt-safe md:pt-6 pb-28 md:pb-8"
+              className="h-full overflow-y-auto overscroll-contain px-4 md:px-8 pt-safe md:pt-6 pb-44 md:pb-8"
             >
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div
