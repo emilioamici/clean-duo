@@ -146,9 +146,19 @@ export function cleanColor(pct: number): string {
   return `hsl(${hue} 58% 48%)`
 }
 
+/** «25 nov», con l'anno se non è quello in corso. */
+export function lastDoneLabel(ts: number, now = Date.now()): string {
+  const sameYear = new Date(ts).getFullYear() === new Date(now).getFullYear()
+  return new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) }).format(new Date(ts))
+}
+
 export function dueLabel(task: Task, now = Date.now(), roomId?: string): string {
   const due = nextDue(task, roomId)
-  if (due === null) return lastFor(task, roomId ?? taskRooms(task)[0]) ? t('Completata') : t('Su richiesta')
+  if (due === null) {
+    // «su richiesta» già fatta: si dice quando è stata fatta l'ultima volta
+    const last = lastFor(task, roomId ?? taskRooms(task)[0])
+    return last ? t('Ultima volta il {date}', { date: lastDoneLabel(last, now) }) : t('Su richiesta')
+  }
   const diff = Math.round((startOfDay(due) - startOfDay(now)) / DAY)
   if (diff < -1) return t('Scaduta da {n} giorni', { n: -diff })
   if (diff === -1) return t('Scaduta ieri')

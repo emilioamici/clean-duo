@@ -500,3 +500,19 @@ describe('contributori di un completamento', () => {
     for (const m of [a, b]) expect(m.logs.find((l) => l.id === old.id)!.with).toEqual(['m2'])
   })
 })
+
+describe('etichetta delle azioni su richiesta già fatte', () => {
+  it('dice quando è stata fatta l\'ultima volta, con l\'anno solo se diverso da quello in corso', async () => {
+    const { dueLabel, lastDoneLabel } = await import('./clean')
+    const db = createDemoDb()
+    const now = new Date(2026, 10, 25, 12).getTime()
+    const task = { ...db.tasks[0], recurrence: { type: 'once' as const, every: 1 }, lastCompletedAt: new Date(2026, 10, 20, 9).getTime(), todoAt: null, roomDone: undefined, roomIds: undefined }
+    const label = dueLabel(task, now)
+    expect(label).toContain(lastDoneLabel(task.lastCompletedAt, now))
+    expect(label).not.toBe('Completata')
+    expect(lastDoneLabel(new Date(2025, 10, 20).getTime(), now)).toContain('2025')
+    expect(lastDoneLabel(task.lastCompletedAt, now)).not.toContain('2026')
+    // mai fatta: resta «Su richiesta»... ma prima del primo completamento è da fare (scadenza = creazione), quindi non arriva qui
+    expect(dueLabel({ ...task, lastCompletedAt: null }, now)).not.toContain('Ultima volta')
+  })
+})

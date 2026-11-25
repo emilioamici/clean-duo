@@ -8,6 +8,7 @@ export const EN: Record<string, string> = {
   "Le stelle vanno tutte a {who}.": "All the stars go to {who}.",
   "Non ci sono altri membri.": "There are no other members.",
   "{who} ha completato «{task}». Seleziona chi ha dato una mano: le stelle ({n} ⭐) si dividono in parti uguali.": "{who} completed “{task}”. Select who lent a hand: the stars ({n} ⭐) are split equally.",
+  "Ultima volta il {date}": "Last completed on {date}",
   "{n} azioni in corso": "{n} tasks running",
   "1 azione in corso": "1 task running",
   "Casa": "Home",
