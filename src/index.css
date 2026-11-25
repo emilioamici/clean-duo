@@ -126,3 +126,10 @@ button { @apply select-none; }
 @media (prefers-reduced-transparency: reduce) {
   .glass, .glass-strong { background: rgb(var(--surface)); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
+
+/* Gattino con la scopa sulla scheda «in corso»: la scopa spazza, il gattino ondeggia appena. Ferma con «Riduci movimento». */
+@keyframes broom-sweep { 0%, 100% { transform: rotate(-16deg); } 50% { transform: rotate(16deg); } }
+@keyframes cat-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+.broom-sweep { transform-origin: 22% 8%; animation: broom-sweep 1.4s ease-in-out infinite; }
+.cat-bob { animation: cat-bob 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .broom-sweep, .cat-bob { animation: none; } }

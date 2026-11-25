@@ -1,5 +1,7 @@
 /** Traduzioni in inglese. La chiave è il testo italiano usato nel codice con `t('…')`; i segnaposto {nome} e i <b>…</b> devono coincidere. */
 export const EN: Record<string, string> = {
+  "{n} azioni in corso": "{n} tasks running",
+  "1 azione in corso": "1 task running",
   "Casa": "Home",
   "Accesso come": "Signed in as",
   "{n} azioni programmate": "{n} scheduled tasks",
