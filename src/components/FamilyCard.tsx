@@ -103,10 +103,6 @@ export function FamilyCard() {
           <button className="glass-btn !p-2" aria-label="+" onClick={() => app.updateSettings({ weeklyGoal: db.settings.weeklyGoal + 1 })}><Plus size={16} /></button>
         </span>
       </div>
-      <div className="flex gap-2">
-        <div className="w-16"><CommitInput value={db.settings.prizeEmoji} onCommit={(v) => app.updateSettings({ prizeEmoji: v })} aria-label={t('Emoji premio')} style={{ textAlign: 'center' }} /></div>
-        <div className="flex-1"><CommitInput value={db.settings.prize} placeholder={t('Premio del mese per il vincitore')} onCommit={(v) => app.updateSettings({ prize: v })} /></div>
-      </div>
 
       {!inDrive ? (
         <Box>

@@ -6,6 +6,7 @@ import type { ActivityLog } from '../types'
 import { locale, t } from '../i18n'
 import { useApp } from '../store/AppContext'
 import { MeChip, NotificationBell, SyncPill } from './Chrome'
+import { CommitInput } from './FamilyCard'
 import { MascotPeek } from './Mascots'
 import { RoomIcon } from './icons'
 import { Accordion, Avatar, CleanBar, PageHeader, Segmented, Sheet } from './ui'
@@ -50,7 +51,7 @@ function ContributorsForm({ log, onClose }: { log: ActivityLog; onClose: () => v
 }
 
 export function RankingView() {
-  const { db, deleteLog } = useApp()
+  const { db, deleteLog, updateSettings } = useApp()
   const [editLog, setEditLog] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>('week')
   const [open, setOpen] = useState(loadOpen)
@@ -132,6 +133,15 @@ export function RankingView() {
 
         {/* Colonna Destra: Accordion su obiettivi, andamento e storico */}
         <div className="lg:col-span-5 xl:col-span-5 space-y-3 mt-4 lg:mt-0">
+          {/* il premio si sceglie qui, sopra l'obiettivo settimanale */}
+          <div className="card p-4">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-muted"><Gift size={13} /> {t('Premio del mese')}</p>
+            <div className="flex gap-2">
+              <div className="w-16"><CommitInput value={db.settings.prizeEmoji} onCommit={(v) => updateSettings({ prizeEmoji: v })} aria-label={t('Emoji premio')} style={{ textAlign: 'center' }} /></div>
+              <div className="flex-1"><CommitInput value={db.settings.prize} placeholder={t('Premio del mese per il vincitore')} onCommit={(v) => updateSettings({ prize: v })} /></div>
+            </div>
+          </div>
+
           <Accordion title={t('Obiettivo settimanale')} icon={<Target size={20} />} open={!!open.goal} onToggle={() => flip('goal')} summary={t('Squadra {a}/{b} ⭐', { a: teamTotal, b: teamGoal })}>
             <div className="mb-1 flex justify-between text-sm"><span className="font-semibold">{t('Squadra')}</span><span>{teamTotal}/{teamGoal} ⭐</span></div>
             <CleanBar pct={Math.min(100, (teamTotal / teamGoal) * 100)} height={10} />
